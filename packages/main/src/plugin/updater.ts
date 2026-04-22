@@ -41,6 +41,7 @@ import { Disposable } from '/@/plugin/types/disposable.js';
 import { isLinux, isWindows } from '/@/util.js';
 import product from '/@product.json' with { type: 'json' };
 
+// eslint-disable-next-line no-restricted-imports
 import rootPackage from '../../../../package.json' with { type: 'json' };
 import { TaskManager } from './tasks/task-manager.js';
 
@@ -426,9 +427,8 @@ export class Updater {
     // local build not pushed to GitHub so prevent any 'update'
     if (error?.message?.includes('No published versions on GitHub')) {
       console.log('Cannot check for updates, no published versions on GitHub');
-      this.defaultVersionEntry();
-      return;
     }
+    this.defaultVersionEntry();
     console.error('unable to check for updates', error);
     this.apiSender.send('app-update-available', false);
   }

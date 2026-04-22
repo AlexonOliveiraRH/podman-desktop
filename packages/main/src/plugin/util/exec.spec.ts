@@ -27,24 +27,14 @@ import type { Mock } from 'vitest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { Proxy } from '/@/plugin/proxy.js';
-import * as util from '/@/util.js';
+import { isLinux, isMac, isWindows } from '/@/util.js';
 
 import { Exec, getInstallationPath, macosExtraPath } from './exec.js';
 
 // Mock sudo-prompt exec to resolve everytime.
-vi.mock(import('@expo/sudo-prompt'), async () => {
-  return {
-    exec: vi.fn(),
-  };
-});
-
+vi.mock(import('@expo/sudo-prompt'));
 vi.mock(import('/@/util.js'));
-
-vi.mock('child_process', () => {
-  return {
-    spawn: vi.fn(),
-  };
-});
+vi.mock(import('node:child_process'));
 
 const setEncodingMock = vi.fn();
 
@@ -55,7 +45,6 @@ describe('exec', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.clearAllMocks();
   });
 
   const exec = new Exec(proxy);
@@ -142,12 +131,6 @@ describe('exec', () => {
   test('should reject with an error when the process error event received', async () => {
     const command = 'nonexistent-command';
 
-    vi.mock('child_process', () => {
-      return {
-        spawn: vi.fn(),
-      };
-    });
-
     const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
       if (event === 'data') {
         cb('');
@@ -210,16 +193,10 @@ describe('exec', () => {
     const command = 'echo';
     const args = ['Hello, World!'];
     const error = new Error('Error message');
-    (util.isWindows as Mock).mockReturnValue(true);
+    vi.mocked(isWindows).mockReturnValue(true);
 
     (sudo.exec as Mock).mockImplementation((_command, _options, callback) => {
       callback(error);
-    });
-
-    vi.mock('child_process', () => {
-      return {
-        spawn: vi.fn(),
-      };
     });
 
     const execResult = exec.exec(command, args, { isAdmin: true });
@@ -341,7 +318,7 @@ describe('exec', () => {
     const command = 'echo';
     const args = ['Hello, "World"!'];
 
-    (util.isMac as Mock).mockReturnValue(true);
+    vi.mocked(isMac).mockReturnValue(true);
 
     const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
       if (event === 'data') {
@@ -377,7 +354,7 @@ describe('exec', () => {
     const command = 'echo';
     const args = ['Hello, World!'];
 
-    (util.isLinux as Mock).mockReturnValue(true);
+    vi.mocked(isLinux).mockReturnValue(true);
 
     const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
       if (event === 'data') {
@@ -410,7 +387,7 @@ describe('exec', () => {
     const command = 'echo';
     const args = ['Hello, World!'];
 
-    (util.isLinux as Mock).mockReturnValue(true);
+    vi.mocked(isLinux).mockReturnValue(true);
 
     const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
       if (event === 'data') {
@@ -446,7 +423,7 @@ describe('exec', () => {
   test('should run the command with privileges using exec on Windows', async () => {
     const command = 'echo';
     const args = ['Hello, World!'];
-    (util.isWindows as Mock).mockReturnValue(true);
+    vi.mocked(isWindows).mockReturnValue(true);
 
     (sudo.exec as Mock).mockImplementation((_command, _options, callback) => {
       callback(undefined);
@@ -477,7 +454,7 @@ describe('exec', () => {
   test('should run the command with privileges on Windows and remove unsupported environment', async () => {
     const command = 'echo';
     const args = ['Hello, World!'];
-    (util.isWindows as Mock).mockReturnValue(true);
+    vi.mocked(isWindows).mockReturnValue(true);
     let options:
       | {
           env?: { [p: string]: string };
@@ -516,11 +493,65 @@ describe('exec', () => {
     expect(options?.env?.['MY(VAR']).not.toBeDefined();
   });
 
+  function mockDetachedProcess(event: string, eventArg: unknown): { spawnMock: Mock; unrefMock: Mock } {
+    const unrefMock = vi.fn();
+    const onMock = vi.fn().mockImplementation((evt: string, cb: (arg0: unknown) => void) => {
+      if (evt === event) {
+        cb(eventArg);
+      }
+    });
+    const spawnMock = vi.mocked(spawn).mockReturnValue({
+      unref: unrefMock,
+      on: onMock,
+      killed: false,
+    } as unknown as ChildProcess);
+    return { spawnMock, unrefMock };
+  }
+
+  test.each([
+    { description: 'without custom cwd', cwd: undefined },
+    { description: 'with custom cwd', cwd: '/opt/app' },
+  ])('should spawn a detached process and resolve $description', async ({ cwd }) => {
+    const command = 'my-daemon';
+    const args = ['--background'];
+    const { spawnMock, unrefMock } = mockDetachedProcess('close', 0);
+
+    const result = await exec.exec(command, args, { detached: true, cwd });
+
+    const expectedOpts: Record<string, unknown> = { detached: true, stdio: 'ignore' };
+    if (cwd) expectedOpts['cwd'] = cwd;
+    expect(spawnMock).toHaveBeenCalledWith(command, args, expect.objectContaining(expectedOpts));
+    expect(unrefMock).toHaveBeenCalled();
+    expect(result).toEqual({ command, stdout: '', stderr: '' });
+  });
+
+  test.each([
+    {
+      description: 'non-zero exit code',
+      event: 'close',
+      eventArg: 42,
+      expectedError: /Command execution failed with exit code 42/,
+    },
+    {
+      description: 'error event',
+      event: 'error',
+      eventArg: new Error('spawn ENOENT'),
+      expectedError: /Failed to execute command: spawn ENOENT/,
+    },
+  ])('should reject when detached process emits $description', async ({ event, eventArg, expectedError }) => {
+    mockDetachedProcess(event, eventArg);
+
+    const execResult = exec.exec('failing-command', [], { detached: true });
+
+    await expect(execResult).rejects.toThrowError(expectedError);
+    await expect(execResult).rejects.toThrowError(Error);
+  });
+
   test('should run the command and set specific encoding', async () => {
     const command = 'echo';
     const args = ['Hello, World!'];
 
-    (util.isLinux as Mock).mockReturnValue(true);
+    vi.mocked(isLinux).mockReturnValue(true);
 
     const on = vi.fn().mockImplementationOnce((event: string, cb: (arg0: string) => string) => {
       if (event === 'data') {
@@ -556,13 +587,6 @@ describe('exec', () => {
   });
 });
 
-vi.mock('./util', () => {
-  return {
-    isWindows: vi.fn(),
-    isMac: vi.fn(),
-  };
-});
-
 describe('getInstallationPath', () => {
   let originalPath: string | undefined;
 
@@ -574,56 +598,52 @@ describe('getInstallationPath', () => {
     process.env['PATH'] = originalPath;
   });
 
-  describe(
-    'windows',
-    {
-      // as the getInstallationPath is using `node:path` and it is platform specific
-      // we cannot assert on non-windows platforms properly
-      skip: platform() !== 'win32',
-    },
-    () => {
-      beforeEach(() => {
-        vi.spyOn(util, 'isWindows').mockImplementation(() => true);
-        vi.spyOn(util, 'isMac').mockImplementation(() => false);
-      });
+  describe('windows', {
+    // as the getInstallationPath is using `node:path` and it is platform specific
+    // we cannot assert on non-windows platforms properly
+    skip: platform() !== 'win32',
+  }, () => {
+    beforeEach(() => {
+      vi.mocked(isWindows).mockReturnValue(true);
+      vi.mocked(isMac).mockReturnValue(false);
+    });
 
-      test('should return the installation paths for Windows', () => {
-        process.env['PATH'] = '';
+    test('should return the installation paths for Windows', () => {
+      process.env['PATH'] = '';
 
-        const path = getInstallationPath();
+      const path = getInstallationPath();
 
-        const parts = path.split(delimiter);
-        expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
-        expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
-      });
+      const parts = path.split(delimiter);
+      expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
+      expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
+    });
 
-      test('should return the installation paths for Windows with pre-filled PATH', () => {
-        process.env['PATH'] = 'c:\\Local';
+    test('should return the installation paths for Windows with pre-filled PATH', () => {
+      process.env['PATH'] = 'c:\\Local';
 
-        const path = getInstallationPath();
+      const path = getInstallationPath();
 
-        const parts = path.split(delimiter);
-        expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
-        expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
-        expect(parts).toContain('c:\\Local');
-      });
+      const parts = path.split(delimiter);
+      expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
+      expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
+      expect(parts).toContain('c:\\Local');
+    });
 
-      test('should return the installation paths for Windows with defined param', () => {
-        process.env['PATH'] = 'c:\\Local';
+    test('should return the installation paths for Windows with defined param', () => {
+      process.env['PATH'] = 'c:\\Local';
 
-        const path = getInstallationPath('c:\\Directory');
+      const path = getInstallationPath('c:\\Directory');
 
-        const parts = path.split(delimiter);
-        expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
-        expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
-        expect(parts).toContain('c:\\Directory');
-      });
-    },
-  );
+      const parts = path.split(delimiter);
+      expect(parts).toContain(join(homedir(), 'AppData', 'Local', 'Programs', 'Podman'));
+      expect(parts).toContain('c:\\Program Files\\RedHat\\Podman');
+      expect(parts).toContain('c:\\Directory');
+    });
+  });
 
   test('should return the installation path for macOS', () => {
-    vi.spyOn(util, 'isWindows').mockImplementation(() => false);
-    vi.spyOn(util, 'isMac').mockImplementation(() => true);
+    vi.mocked(isWindows).mockReturnValue(false);
+    vi.mocked(isMac).mockReturnValue(true);
 
     process.env['PATH'] = '/usr/bin';
 
@@ -633,8 +653,8 @@ describe('getInstallationPath', () => {
   });
 
   test('should return the installation path for macOS with defined param', () => {
-    vi.spyOn(util, 'isWindows').mockImplementation(() => false);
-    vi.spyOn(util, 'isMac').mockImplementation(() => true);
+    vi.mocked(isWindows).mockReturnValue(false);
+    vi.mocked(isMac).mockReturnValue(true);
 
     process.env['PATH'] = '/usr/bin';
 
@@ -644,8 +664,8 @@ describe('getInstallationPath', () => {
   });
 
   test('should return the installation path for other platforms', () => {
-    vi.spyOn(util, 'isWindows').mockImplementation(() => false);
-    vi.spyOn(util, 'isMac').mockImplementation(() => false);
+    vi.mocked(isWindows).mockReturnValue(false);
+    vi.mocked(isMac).mockReturnValue(false);
     process.env['PATH'] = '/usr/bin'; // Example PATH for other platforms
 
     const path = getInstallationPath();
@@ -654,8 +674,8 @@ describe('getInstallationPath', () => {
   });
 
   test('should return the installation path for other platforms with defined param', () => {
-    vi.spyOn(util, 'isWindows').mockImplementation(() => false);
-    vi.spyOn(util, 'isMac').mockImplementation(() => false);
+    vi.mocked(isWindows).mockReturnValue(false);
+    vi.mocked(isMac).mockReturnValue(false);
     process.env['PATH'] = '/usr/bin'; // Example PATH for other platforms
 
     const path = getInstallationPath('/usr/other');

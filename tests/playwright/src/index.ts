@@ -18,12 +18,16 @@
 
 // export core modules
 export * from './globalSetup/global-setup';
+export * from './runner/chrome-dev-tools-protocol-runner';
+export * from './runner/electron-runner';
 export * from './runner/podman-desktop-runner';
+export * from './runner/runner-factory';
 export * from './runner/runner-options';
 export * from './setupFiles/setup-registry';
 export * from './utility/auth-utils';
 export * from './utility/cleanup';
 export * from './utility/cluster-operations';
+export * from './utility/dialog';
 export * from './utility/fixtures';
 export * from './utility/kubernetes';
 export * from './utility/operations';
@@ -35,6 +39,8 @@ export * from './utility/wait';
 export * from './model/core/extensions';
 export * from './model/core/operations';
 export * from './model/core/platforms';
+export * from './model/core/settings/preferences';
+export * from './model/core/settings/registries';
 export * from './model/core/states';
 export * from './model/core/types';
 export * from './model/pages/authentication-page';

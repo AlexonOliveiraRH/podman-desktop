@@ -158,7 +158,8 @@ test('Expect message for happy-smiley to use like', async () => {
 });
 
 test('Expect GitHub dialog visible when very-happy-smiley selected', async () => {
-  render(DirectFeedback, { category: 'developers', contentChange: vi.fn(), onCloseForm: vi.fn() });
+  const onCloseFormMock = vi.fn();
+  render(DirectFeedback, { category: 'developers', contentChange: vi.fn(), onCloseForm: onCloseFormMock });
 
   // click on a smiley
   const smiley = await screen.findByRole('button', { name: 'very-happy-smiley' });
@@ -174,6 +175,8 @@ test('Expect GitHub dialog visible when very-happy-smiley selected', async () =>
     expect(window.telemetryTrack).toHaveBeenCalledWith('feedback.openGitHub');
     expect(window.openExternal).toHaveBeenCalledWith('https://github.com/containers/podman-desktop');
   });
+
+  expect(onCloseFormMock).not.toHaveBeenCalled();
 });
 
 test('Expect category to be sent', async () => {
@@ -240,4 +243,18 @@ test('Expect design category to be sent when design category is used', async () 
 
   // expect close to have been call with confirmation=false
   expect(closeMock).toHaveBeenCalledWith(false);
+});
+
+test('Expect email field has correct text', async () => {
+  render(DirectFeedback, { category: 'developers', contentChange: vi.fn(), onCloseForm: vi.fn() });
+
+  const emaillabel = await screen.findByLabelText(
+    'Share your email address if we can follow up with you regarding your feedback. We will only use your email address for this purpose:',
+  );
+  expect(emaillabel).toBeInTheDocument();
+
+  const emailPlaceholder = await screen.findByPlaceholderText(
+    'Enter email address, or leave blank for anonymous feedback',
+  );
+  expect(emailPlaceholder).toBeInTheDocument();
 });

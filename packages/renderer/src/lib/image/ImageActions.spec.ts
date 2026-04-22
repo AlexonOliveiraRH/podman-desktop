@@ -29,7 +29,7 @@ import type { ImageInfoUI } from '/@/lib/image/ImageInfoUI';
 
 const getContributedMenusMock = vi.fn();
 
-vi.mock('./image-utils', () => {
+vi.mock(import('./image-utils'), () => {
   return {
     ImageUtils: vi.fn().mockImplementation(() => ({
       deleteImage: vi.fn().mockImplementation(() => Promise.reject(new Error('Cannot delete image in test'))),
@@ -37,7 +37,7 @@ vi.mock('./image-utils', () => {
   };
 });
 
-vi.mock('/@/lib/dialogs/messagebox-utils', () => ({
+vi.mock(import('/@/lib/dialogs/messagebox-utils'), () => ({
   withConfirmation: vi.fn(),
 }));
 
@@ -253,6 +253,8 @@ test('Expect withConfirmation to indicate image name and tag', async () => {
   await fireEvent.click(button);
 
   await waitFor(() => {
-    expect(withConfirmation).toHaveBeenNthCalledWith(1, expect.anything(), 'delete image image-name:1.0');
+    expect(withConfirmation).toHaveBeenNthCalledWith(1, expect.anything(), 'delete image image-name:1.0', {
+      variant: 'delete',
+    });
   });
 });

@@ -31,11 +31,7 @@ import { kubernetesResourcesCount } from '/@/stores/kubernetes-resources-count';
 
 import PreferencesKubernetesContextsRendering from './PreferencesKubernetesContextsRendering.svelte';
 
-vi.mock('/@/stores/kubernetes-contexts-state', async () => {
-  return {
-    kubernetesContextsState: vi.fn(),
-  };
-});
+vi.mock(import('/@/stores/kubernetes-contexts-state'));
 
 // Create a fake KubeContextUI
 const mockContext1: KubeContext = {
@@ -106,7 +102,18 @@ beforeAll(() => {
 
 beforeEach(() => {
   kubernetesContexts.set([mockContext1, mockContext2, mockContext3, mockContext4, mockContext5]);
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+});
+
+test('Expect context detail div to use invert-content-divider token', async () => {
+  vi.mocked(kubernetesContextsState).kubernetesContextsState = readable<Map<string, ContextGeneralState>>(new Map());
+  vi.mocked(kubernetesContextsState).kubernetesContextsCheckingStateDelayed = readable<Map<string, boolean>>(new Map());
+  kubernetesGetCurrentContextNameMock.mockResolvedValue('my-current-context');
+  render(PreferencesKubernetesContextsRendering, {});
+  const contextRow = await screen.findByRole('row', { name: 'context-name' });
+  const detailDiv = contextRow.querySelector('[class*="divide-"]');
+  expect(detailDiv).not.toBeNull();
+  expect(detailDiv!.className).toContain('pd-invert-content-divider');
 });
 
 test('test that name, cluster and the server is displayed when rendering', async () => {

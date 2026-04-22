@@ -42,10 +42,10 @@ import type {
 } from '@kubernetes/client-node';
 import type * as containerDesktopAPI from '@podman-desktop/api';
 import type {
-  CertificateInfo,
   CliToolInfo,
   ColorInfo,
   CommandInfo,
+  CommandPaletteSearchOption,
   ContainerCreateOptions,
   ContainerExportOptions,
   ContainerfileInfo,
@@ -118,6 +118,7 @@ import type {
   ResourceName,
   SimpleContainerInfo,
   StatusBarEntryDescriptor,
+  SystemOverviewStatusInfo,
   TelemetryMessages,
   V1Route,
   ViewInfoUI,
@@ -158,7 +159,7 @@ export const buildApiSender = (): ApiSenderType => {
   const eventEmitter = new EventEmitter();
 
   return {
-    send: (channel: string, data: unknown): void => {
+    send: (channel: string, data?: unknown): void => {
       eventEmitter.emit(channel, data);
     },
     receive: (channel: string, func: (...args: unknown[]) => void): IDisposable => {
@@ -256,6 +257,10 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld('extensionSystemIsExtensionsStarted', async (): Promise<boolean> => {
     return ipcInvoke('extension-system:isExtensionsStarted');
+  });
+
+  contextBridge.exposeInMainWorld('getDashboardSystemOverviewStatus', async (): Promise<SystemOverviewStatusInfo> => {
+    return ipcInvoke('dashboard:getSystemOverviewStatus');
   });
 
   contextBridge.exposeInMainWorld(
@@ -478,6 +483,7 @@ export function initExposure(): void {
       imageName: string,
       callback: (event: PullEvent) => void,
       platform?: string,
+      cancellableTokenId?: number,
     ): Promise<void> => {
       onDataCallbacksPullImageId++;
       onDataCallbacksPullImage.set(onDataCallbacksPullImageId, callback);
@@ -487,6 +493,7 @@ export function initExposure(): void {
         imageName,
         onDataCallbacksPullImageId,
         platform,
+        cancellableTokenId,
       );
     },
   );
@@ -1328,6 +1335,7 @@ export function initExposure(): void {
       buildargs?: { [key: string]: string },
       taskId?: number,
       target?: string,
+      validateRegistries?: boolean,
     ): Promise<unknown> => {
       onDataCallbacksBuildImageId++;
       onDataCallbacksBuildImage.set(onDataCallbacksBuildImageId, eventCollect);
@@ -1344,6 +1352,7 @@ export function initExposure(): void {
         buildargs,
         taskId,
         target,
+        validateRegistries,
       );
     },
   );
@@ -1380,6 +1389,10 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld('podmanDesktopGetReleaseNotes', async (): Promise<ReleaseNotesInfo> => {
     return ipcInvoke('app:get-release-notes');
+  });
+
+  contextBridge.exposeInMainWorld('getTitleBarText', async (): Promise<string> => {
+    return ipcInvoke('app:getTitleBarText');
   });
 
   contextBridge.exposeInMainWorld('getProviderInfos', async (): Promise<ProviderInfo[]> => {
@@ -1445,18 +1458,9 @@ export function initExposure(): void {
     },
   );
 
-  contextBridge.exposeInMainWorld('troubleshootingSaveLogs', async (destinaton: string): Promise<string[]> => {
-    return ipcInvoke('troubleshooting:saveLogs', memoryLogs, destinaton);
+  contextBridge.exposeInMainWorld('troubleshootingSaveLogs', async (): Promise<string[]> => {
+    return ipcInvoke('troubleshooting:saveLogs', memoryLogs);
   });
-
-  contextBridge.exposeInMainWorld(
-    'troubleshootingGenerateLogFileUri',
-    async (filename: string, extension?: string): Promise<containerDesktopAPI.Uri> => {
-      const generatedFile = await ipcInvoke('troubleshooting:generateLogFileName', filename, extension);
-      // transform into URI Object
-      return { fsPath: generatedFile, scheme: 'file' } as containerDesktopAPI.Uri;
-    },
-  );
 
   contextBridge.exposeInMainWorld('getContributedMenus', async (context: string): Promise<Menu[]> => {
     return ipcInvoke('menu-registry:getContributedMenus', context);
@@ -1692,12 +1696,20 @@ export function initExposure(): void {
     return ipcInvoke('commands:getCommandPaletteCommands');
   });
 
+  contextBridge.exposeInMainWorld('getCommandPaletteSearchOptions', async (): Promise<CommandPaletteSearchOption[]> => {
+    return ipcInvoke('commands:getCommandPaletteSearchOptions');
+  });
+
   contextBridge.exposeInMainWorld('listExtensions', async (): Promise<ExtensionInfo[]> => {
     return ipcInvoke('extension-loader:listExtensions');
   });
 
   contextBridge.exposeInMainWorld('getWelcomeMessages', async (): Promise<WelcomeMessages> => {
     return ipcInvoke('welcome:getWelcomeMessages');
+  });
+
+  contextBridge.exposeInMainWorld('getUrlProtocol', async (): Promise<string> => {
+    return ipcInvoke('product:getUrlProtocol');
   });
 
   contextBridge.exposeInMainWorld('stopExtension', async (extensionId: string): Promise<void> => {
@@ -2437,6 +2449,17 @@ export function initExposure(): void {
     return ipcInvoke('feedback:GitHubPreview', feedback);
   });
 
+  contextBridge.exposeInMainWorld(
+    'getGitHubFeedbackLinks',
+    async (): Promise<{ [category: string]: string } | undefined> => {
+      return ipcInvoke('feedback:getGitHubFeedbackLinks');
+    },
+  );
+
+  contextBridge.exposeInMainWorld('getFeedbackLinks', async (): Promise<{ [category: string]: string } | undefined> => {
+    return ipcInvoke('feedback:getFeedbackLinks');
+  });
+
   contextBridge.exposeInMainWorld('getFeedbackMessages', async (): Promise<FeedbackMessages> => {
     return ipcInvoke('feedback:getFeedbackMessages');
   });
@@ -2659,6 +2682,10 @@ export function initExposure(): void {
     return ipcInvoke('help-menu:getItems');
   });
 
+  contextBridge.exposeInMainWorld('getRegisteredFeatures', async (): Promise<string[]> => {
+    return ipcInvoke('feature-registry:getRegisteredFeatures');
+  });
+
   contextBridge.exposeInMainWorld('contextCollectAllValues', async (): Promise<Record<string, unknown>> => {
     return ipcInvoke('context:collectAllValues');
   });
@@ -2706,10 +2733,6 @@ export function initExposure(): void {
 
   contextBridge.exposeInMainWorld('unpinStatusBar', async (optionId: string): Promise<void> => {
     return ipcInvoke('statusbar:unpin', optionId);
-  });
-
-  contextBridge.exposeInMainWorld('listCertificates', async (): Promise<CertificateInfo[]> => {
-    return ipcInvoke('certificates:listCertificates');
   });
 }
 

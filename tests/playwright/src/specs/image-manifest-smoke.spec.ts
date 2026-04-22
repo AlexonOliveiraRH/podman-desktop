@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2025 Red Hat, Inc.
+ * Copyright (C) 2025-2026 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import { SettingsBar } from '/@/model/pages/settings-bar';
 import { NavigationBar } from '/@/model/workbench/navigation';
 import { canTestRegistry, setupRegistry } from '/@/setupFiles/setup-registry';
 import { expect as playExpect, test } from '/@/utility/fixtures';
-import { deleteRegistry } from '/@/utility/operations';
+import { deleteRegistry, ensureNoImagesPresentCLI } from '/@/utility/operations';
 import { isWindows } from '/@/utility/platform';
 import { waitForPodmanMachineStartup } from '/@/utility/wait';
 
@@ -42,7 +42,6 @@ const manifestLabelSimple: string = `localhost/${imageNameSimple}`;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let imagesPage: ImagesPage;
-let skipTests = false;
 
 let provider: string | undefined;
 
@@ -52,6 +51,7 @@ let registryPswdSecret: string;
 let manifestLabelComplex: string;
 
 test.beforeAll(async ({ runner, welcomePage, page, navigationBar }) => {
+  test.setTimeout(180_000);
   runner.setVideoAndTraceName('image-manifest-smoke-e2e');
 
   await welcomePage.handleWelcomePage(true);
@@ -77,6 +77,7 @@ test.beforeAll(async ({ runner, welcomePage, page, navigationBar }) => {
     console.log('Error deleting registry:', error);
   });
 
+  await ensureNoImagesPresentCLI(page);
   imagesPage = await navigationBar.openImages();
 });
 
@@ -90,151 +91,152 @@ test.afterAll(async ({ runner, page }) => {
   }
 });
 
-test.describe.serial('Image Manifest E2E Validation', { tag: '@smoke' }, () => {
-  test.describe
-    .serial('Image Manifest Validation - Simple Containerfile', () => {
-      test('Build the image using cross-arch build (simple )', async () => {
-        test.setTimeout(120_000);
+test.describe
+  .serial('Image Manifest E2E Validation', { tag: '@smoke' }, () => {
+    test.describe
+      .serial('Image Manifest Validation - Simple Containerfile', () => {
+        test('Build the image using cross-arch build (simple )', async () => {
+          test.setTimeout(120_000);
 
-        await playExpect(imagesPage.heading).toBeVisible();
-        const alreadyPresentImagesCount = await imagesPage.countRowsFromTable();
+          await playExpect(imagesPage.heading).toBeVisible();
+          const alreadyPresentImagesCount = await imagesPage.countRowsFromTable();
 
-        const buildImagePage = await imagesPage.openBuildImage();
-        await playExpect(buildImagePage.heading).toBeVisible();
-        const dockerfilePath = path.resolve(__dirname, '..', '..', 'resources', 'test-containerfile');
-        const contextDirectory = path.resolve(__dirname, '..', '..', 'resources');
+          const buildImagePage = await imagesPage.openBuildImage();
+          await playExpect(buildImagePage.heading).toBeVisible();
+          const dockerfilePath = path.resolve(__dirname, '..', '..', 'resources', 'test-containerfile');
+          const contextDirectory = path.resolve(__dirname, '..', '..', 'resources');
 
-        imagesPage = await buildImagePage.buildImage(imageNameSimple, dockerfilePath, contextDirectory, architectures);
-        await playExpect
-          .poll(async () => imagesPage.waitForImageExists(manifestLabelSimple, 60_000), { timeout: 0 })
-          .toBeTruthy();
-        await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 4);
-        await imagesPage.toggleImageManifest(manifestLabelSimple);
-        await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 2);
+          imagesPage = await buildImagePage.buildImage(
+            imageNameSimple,
+            dockerfilePath,
+            contextDirectory,
+            architectures,
+          );
+          await playExpect
+            .poll(async () => imagesPage.waitForImageExists(manifestLabelSimple, 60_000), { timeout: 0 })
+            .toBeTruthy();
+          await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 4);
+          await imagesPage.toggleImageManifest(manifestLabelSimple);
+          await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 2);
+        });
+
+        test('Check Manifest details', async () => {
+          const imageDetailsPage = await imagesPage.openImageDetails(manifestLabelSimple);
+
+          await Promise.all(
+            architectures.map(async architecture => {
+              await playExpect(imageDetailsPage.tabContent).toContainText(architecture);
+            }),
+          );
+          await playExpect(imageDetailsPage.backLink).toBeVisible();
+          await imageDetailsPage.backLink.click();
+        });
+        test('Delete Manifest', async ({ page }) => {
+          test.setTimeout(180_000);
+          await deleteImageManifest(page, manifestLabelSimple);
+        });
       });
-
-      test('Check Manifest details', async () => {
-        const imageDetailsPage = await imagesPage.openImageDetails(manifestLabelSimple);
-
-        await Promise.all(
-          architectures.map(async architecture => {
-            await playExpect(imageDetailsPage.tabContent).toContainText(architecture);
-          }),
+    test.describe
+      .serial('Image Manifest Validation - Complex Containerfile', () => {
+        test.skip(
+          () => isWindows && provider?.toLocaleLowerCase().trim() === 'wsl',
+          'Complex Containerfile uses RUN steps that require executing foreign-arch binaries, which fails on WSL without QEMU emulation. Simple Containerfile only defines CMD metadata and succeeds.',
         );
-        await playExpect(imageDetailsPage.backLink).toBeVisible();
-        await imageDetailsPage.backLink.click();
-      });
-      test('Delete Manifest', async ({ page }) => {
-        await deleteImageManifest(page, manifestLabelSimple);
-      });
-    });
-  test.describe
-    .serial('Image Manifest Validation - Complex Containerfile', () => {
-      test('Add registry for manifest push', async ({ navigationBar, page }) => {
-        test.skip(!canTestRegistry(), 'Registry tests are disabled');
 
-        await navigationBar.openSettings();
-        const settingsBar = new SettingsBar(page);
-        const registryPage = await settingsBar.openTabPage(RegistriesPage);
-        await playExpect(registryPage.heading).toBeVisible();
+        test('Add registry for manifest push', async ({ navigationBar, page }) => {
+          test.skip(!canTestRegistry(), 'Registry tests are disabled');
 
-        await registryPage.createRegistry(registryUrl, registryUsername, registryPswdSecret);
+          await navigationBar.openSettings();
+          const settingsBar = new SettingsBar(page);
+          const registryPage = await settingsBar.openTabPage(RegistriesPage);
+          await playExpect(registryPage.heading).toBeVisible();
 
-        const registryBox = registryPage.registriesTable.getByLabel('GitHub');
-        const username = registryBox.getByText(registryUsername);
-        await playExpect(username).toBeVisible();
-      });
+          await registryPage.createRegistry(registryUrl, registryUsername, registryPswdSecret);
 
-      test('Build the image using cross-arch build (complex)', async ({ page, navigationBar }) => {
-        test.setTimeout(120_000);
+          const registryBox = registryPage.registriesTable.getByLabel('GitHub');
+          const username = registryBox.getByText(registryUsername);
+          await playExpect(username).toBeVisible();
+        });
 
-        imagesPage = await navigationBar.openImages();
-        await playExpect(imagesPage.heading).toBeVisible();
-        const alreadyPresentImagesCount = await imagesPage.countRowsFromTable();
+        test('Build the image using cross-arch build (complex)', async ({ navigationBar }) => {
+          test.setTimeout(180_000);
 
-        const buildImagePage = await imagesPage.openBuildImage();
-        await playExpect(buildImagePage.heading).toBeVisible();
-        const dockerfilePath = path.resolve(
-          __dirname,
-          '..',
-          '..',
-          'resources',
-          'alphine-hello',
-          'alphine-hello.containerfile',
-        );
-        const contextDirectory = path.resolve(__dirname, '..', '..', 'resources', 'alphine-hello');
+          imagesPage = await navigationBar.openImages();
+          await playExpect(imagesPage.heading).toBeVisible();
+          const alreadyPresentImagesCount = await imagesPage.countRowsFromTable();
 
-        try {
+          const buildImagePage = await imagesPage.openBuildImage();
+          await playExpect(buildImagePage.heading).toBeVisible();
+
+          const dockerfilePath = path.resolve(
+            __dirname,
+            '..',
+            '..',
+            'resources',
+            'alphine-hello',
+            'alphine-hello.containerfile',
+          );
+          const contextDirectory = path.resolve(__dirname, '..', '..', 'resources', 'alphine-hello');
+
           imagesPage = await buildImagePage.buildImage(
             manifestLabelComplex,
             dockerfilePath,
             contextDirectory,
             architectures,
           );
-        } catch (error) {
-          skipTests = true;
+
+          await playExpect
+            .poll(async () => await imagesPage.waitForImageExists(manifestLabelComplex, 60_000), { timeout: 0 })
+            .toBeTruthy();
+          await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 4);
+          await imagesPage.toggleImageManifest(manifestLabelComplex);
+          await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 2);
+        });
+
+        test('Check Manifest details', async ({ navigationBar }) => {
+          imagesPage = await navigationBar.openImages();
+          await playExpect(imagesPage.heading).toBeVisible();
+
+          const imageDetailsPage = await imagesPage.openImageDetails(manifestLabelComplex);
+          await Promise.all(
+            architectures.map(async architecture => {
+              await playExpect(imageDetailsPage.tabContent).toContainText(architecture);
+            }),
+          );
+          await playExpect(imageDetailsPage.backLink).toBeVisible();
+          await imageDetailsPage.backLink.click();
+        });
+
+        test('Push manifest to registry', async ({ navigationBar }) => {
+          test.skip(!canTestRegistry(), 'Registry tests are disabled');
+          test.setTimeout(150_000);
+
+          imagesPage = await navigationBar.openImages();
+          await playExpect(imagesPage.heading).toBeVisible();
+
+          await imagesPage.pushManifest(manifestLabelComplex);
+        });
+
+        test('Remove registry after manifest push', async ({ page, navigationBar }) => {
+          test.skip(!canTestRegistry(), 'Registry tests are disabled');
+
+          await navigationBar.openSettings();
+          const settingsBar = new SettingsBar(page);
+          const registryPage = await settingsBar.openTabPage(RegistriesPage);
+          await playExpect(registryPage.heading).toBeVisible();
+
+          await registryPage.removeRegistry('GitHub');
+          const registryBox = registryPage.registriesTable.getByLabel('GitHub');
+          const username = registryBox.getByText(registryUsername);
+          await playExpect(username).toBeHidden();
+        });
+
+        test('Delete Manifest', async ({ page }) => {
+          test.setTimeout(180_000);
           await deleteImageManifest(page, manifestLabelComplex);
-          if (!!isWindows && provider?.toLocaleLowerCase().trim() === 'wsl') {
-            test.skip(true, 'Building cross-architecture images with the WSL hypervisor is not working yet');
-          }
-          throw error;
-        }
-
-        await playExpect
-          .poll(async () => await imagesPage.waitForImageExists(manifestLabelComplex, 60_000), { timeout: 0 })
-          .toBeTruthy();
-        await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 4);
-        await imagesPage.toggleImageManifest(manifestLabelComplex);
-        await playExpect.poll(async () => await imagesPage.countRowsFromTable()).toBe(alreadyPresentImagesCount + 2);
+        });
       });
-
-      test('Check Manifest details', async ({ navigationBar }) => {
-        test.skip(skipTests, 'Build manifest failed, manifest should be already deleted, skipping the test');
-
-        imagesPage = await navigationBar.openImages();
-        await playExpect(imagesPage.heading).toBeVisible();
-
-        const imageDetailsPage = await imagesPage.openImageDetails(manifestLabelComplex);
-        await Promise.all(
-          architectures.map(async architecture => {
-            await playExpect(imageDetailsPage.tabContent).toContainText(architecture);
-          }),
-        );
-        await playExpect(imageDetailsPage.backLink).toBeVisible();
-        await imageDetailsPage.backLink.click();
-      });
-
-      test('Push manifest to registry', async ({ navigationBar }) => {
-        test.skip(!canTestRegistry(), 'Registry tests are disabled');
-        test.skip(skipTests, 'Build manifest failed, skipping the test');
-        test.setTimeout(150_000);
-
-        imagesPage = await navigationBar.openImages();
-        await playExpect(imagesPage.heading).toBeVisible();
-
-        await imagesPage.pushManifest(manifestLabelComplex);
-      });
-
-      test('Remove registry after manifest push', async ({ page, navigationBar }) => {
-        test.skip(!canTestRegistry(), 'Registry tests are disabled');
-
-        await navigationBar.openSettings();
-        const settingsBar = new SettingsBar(page);
-        const registryPage = await settingsBar.openTabPage(RegistriesPage);
-        await playExpect(registryPage.heading).toBeVisible();
-
-        await registryPage.removeRegistry('GitHub');
-        const registryBox = registryPage.registriesTable.getByLabel('GitHub');
-        const username = registryBox.getByText(registryUsername);
-        await playExpect(username).toBeHidden();
-      });
-
-      test('Delete Manifest', async ({ page }) => {
-        test.skip(skipTests, 'Build manifest failed, manifest should be already deleted, skipping the test');
-        await deleteImageManifest(page, manifestLabelComplex);
-      });
-    });
-});
+  });
 
 async function deleteImageManifest(page: Page, manifestName: string): Promise<void> {
   const navigationBar = new NavigationBar(page);
@@ -242,8 +244,8 @@ async function deleteImageManifest(page: Page, manifestName: string): Promise<vo
 
   await imagesPage.deleteImageManifest(manifestName);
   await playExpect
-    .poll(async () => await imagesPage.waitForImageDelete(manifestName, 30_000), { timeout: 0 })
+    .poll(async () => await imagesPage.waitForImageDelete(manifestName, 60_000), { timeout: 0 })
     .toBeTruthy();
   await imagesPage.deleteAllUnusedImages();
-  await playExpect.poll(async () => await imagesPage.countRowsFromTable(), { timeout: 30_000 }).toBe(0);
+  await playExpect.poll(async () => await imagesPage.countRowsFromTable(), { timeout: 90_000 }).toBe(0);
 }

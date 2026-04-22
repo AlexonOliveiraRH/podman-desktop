@@ -18,15 +18,16 @@
 
 // Top-level API files
 export * from './async-disposable.js';
-export * from './certificate-info.js';
 export * from './cli-tool-info.js';
 export * from './color-info.js';
 export * from './command-info.js';
 export * from './container-info.js';
 export * from './container-inspect-info.js';
+export * from './container-registry-settings.js';
 export * from './container-stats-info.js';
 export * from './containerfile-info.js';
 export * from './contribution-info.js';
+export * from './dashboard-info.js';
 export * from './dialog.js';
 export * from './disposable.js';
 export * from './disposable-group.js';
@@ -76,7 +77,9 @@ export * from './provider-info.js';
 export * from './proxy.js';
 export * from './pull-event.js';
 export * from './release-notes-info.js';
+export * from './search-option.js';
 export * from './status-bar.js';
+export * from './system-overview-info.js';
 export * from './taskInfo.js';
 export * from './tasks-preferences.js';
 export * from './telemetry.js';

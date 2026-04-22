@@ -55,6 +55,29 @@ import { Disposable } from './types/disposable.js';
 import { HttpServer } from './webview/webview-registry.js';
 
 vi.mock(import('./extension/extension-api-version.js'));
+vi.mock(import('electron'), () => {
+  return {
+    shell: {
+      openExternal: vi.fn(),
+    },
+    app: {
+      on: vi.fn(),
+      getVersion: vi.fn(),
+      getAppPath: vi.fn().mockReturnValue('a-custom-appPath'),
+    },
+    clipboard: {
+      writeText: vi.fn(),
+    },
+    ipcMain: {
+      handle: vi.fn(),
+      emit: vi.fn().mockReturnValue(true),
+      on: vi.fn(),
+    },
+    BrowserWindow: {
+      getAllWindows: vi.fn(),
+    },
+  } as unknown as typeof Electron;
+});
 
 let pluginSystem: TestPluginSystem;
 
@@ -95,29 +118,6 @@ const mainWindowDeferred = Promise.withResolvers<BrowserWindow>();
 const handlers = new Map<string, any>();
 
 beforeAll(async () => {
-  vi.mock('electron', () => {
-    return {
-      shell: {
-        openExternal: vi.fn(),
-      },
-      app: {
-        on: vi.fn(),
-        getVersion: vi.fn(),
-        getAppPath: vi.fn().mockReturnValue('a-custom-appPath'),
-      },
-      clipboard: {
-        writeText: vi.fn(),
-      },
-      ipcMain: {
-        handle: vi.fn(),
-        emit: vi.fn().mockReturnValue(true),
-        on: vi.fn(),
-      },
-      BrowserWindow: {
-        getAllWindows: vi.fn(),
-      },
-    };
-  });
   const trayMenuMock = {} as unknown as TrayMenu;
   pluginSystem = new TestPluginSystem(trayMenuMock, mainWindowDeferred);
 
@@ -143,7 +143,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  await inversifyContainer.unbindAll();
+  await inversifyContainer.unbindAllAsync();
 });
 
 beforeEach(() => {
@@ -186,11 +186,11 @@ test('Check SecurityRestrictions on Links and user accept', async () => {
   const value = await securityRestrictionCurrentHandler.handler?.('https://www.my-custom-domain.io');
 
   expect(showMessageBoxMock).toBeCalledWith({
-    buttons: ['Yes', 'Copy link', 'Cancel'],
+    buttons: ['Open', 'Copy Link', 'Cancel'],
     message: 'Are you sure you want to open the external website?',
     detail: 'https://www.my-custom-domain.io',
     cancelId: 2,
-    title: 'Open External Website',
+    title: 'Open External Link?',
     type: 'question',
   });
   expect(value).toBeTruthy();
@@ -213,10 +213,10 @@ test('Check SecurityRestrictions on Links and user copy link', async () => {
   const value = await securityRestrictionCurrentHandler.handler?.('https://www.my-custom-domain.io');
 
   expect(showMessageBoxMock).toBeCalledWith({
-    buttons: ['Yes', 'Copy link', 'Cancel'],
+    buttons: ['Open', 'Copy Link', 'Cancel'],
     message: 'Are you sure you want to open the external website?',
     detail: 'https://www.my-custom-domain.io',
-    title: 'Open External Website',
+    title: 'Open External Link?',
     cancelId: 2,
     type: 'question',
   });
@@ -243,10 +243,10 @@ test('Check SecurityRestrictions on Links and user refuses', async () => {
 
   expect(showMessageBoxMock).toBeCalledWith({
     cancelId: 2,
-    buttons: ['Yes', 'Copy link', 'Cancel'],
+    buttons: ['Open', 'Copy Link', 'Cancel'],
     message: 'Are you sure you want to open the external website?',
     detail: 'https://www.my-custom-domain.io',
-    title: 'Open External Website',
+    title: 'Open External Link?',
     type: 'question',
   });
   expect(value).toBeFalsy();
@@ -423,11 +423,46 @@ test('Pull image creates a task', async () => {
   expect(registeredCallback).not.equal(defaultCallback);
   registeredCallback({ id: 'pullEvent1' } as PullEvent);
   expect(createTaskSpy).toHaveBeenCalledOnce();
-  expect(createTaskSpy).toHaveBeenCalledWith({ title: `Pulling registry.com/repo/image:latest`, action: undefined });
+  expect(createTaskSpy).toHaveBeenCalledWith({
+    title: 'Pulling registry.com/repo/image:latest',
+    cancellable: false,
+    cancellationTokenSourceId: undefined,
+  });
   expect(webContents.send).toBeCalledWith('container-provider-registry:pullImage-onData', 1, {
     id: 'pullEvent1',
   } as PullEvent);
   expect(createTaskSpy.mock.results[0]?.value.status).toBe('success');
+});
+
+test('Pull image creates a cancellable task and marks task as canceled on cancellation', async () => {
+  const createTaskSpy = vi.spyOn(TaskManager.prototype, 'createTask');
+  const createTokenHandler: () => Promise<number | { result: number }> = handlers.get('cancellableTokenSource:create');
+  const cancelTokenHandler: (_event: unknown, id: number) => Promise<void> = handlers.get('cancellableToken:cancel');
+  const handle = handlers.get('container-provider-registry:pullImage');
+  expect(handle).not.equal(undefined);
+
+  const tokenCreationResult = await createTokenHandler();
+  const tokenId = typeof tokenCreationResult === 'number' ? tokenCreationResult : tokenCreationResult.result;
+  const pullImageSpy = vi
+    .spyOn(ContainerProviderRegistry.prototype, 'pullImage')
+    .mockImplementation(async (_engine, _imageName, _callback, _platform, abortController) => {
+      await Promise.resolve();
+      abortController?.abort();
+      throw new Error('aborted');
+    });
+
+  await cancelTokenHandler(undefined, tokenId);
+  const handleReturn = await handle(undefined, 'podman', 'registry.com/repo/image:latest', 1, undefined, tokenId);
+  expect(handleReturn.error).toBeInstanceOf(Error);
+  expect(handleReturn.error.message).toBe('aborted');
+
+  expect(pullImageSpy).toHaveBeenCalled();
+  expect(createTaskSpy).toHaveBeenCalledWith({
+    title: 'Pulling registry.com/repo/image:latest',
+    cancellable: true,
+    cancellationTokenSourceId: tokenId,
+  });
+  expect(createTaskSpy.mock.results[0]?.value.status).toBe('canceled');
 });
 
 test('ipcMain.handle returns caught error as is if it is instance of Error', async () => {
@@ -1017,6 +1052,10 @@ describe('container-provider-registry:playKube', () => {
     endpoint: {
       socketPath: '.sock',
     },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
   };
 
   test('should call ContainerProviderRegistry#playKube', async () => {

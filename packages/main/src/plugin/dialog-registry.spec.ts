@@ -35,13 +35,18 @@ const fakeBrowserWindow: BrowserWindow = {
   },
 } as unknown as BrowserWindow;
 
-vi.mock('electron', async () => {
+vi.mock(import('/@/util.js'), () => {
+  return {
+    isMac: vi.fn().mockReturnValue(false),
+  };
+});
+vi.mock(import('electron'), async () => {
   return {
     dialog: {
       showOpenDialog: vi.fn(),
       showSaveDialog: vi.fn(),
     },
-  };
+  } as unknown as typeof Electron;
 });
 
 class TestDialogRegistry extends DialogRegistry {}
@@ -86,12 +91,6 @@ describe('showOpenDialog', () => {
       filePaths: [tmpMyPath],
       canceled: false,
     });
-  });
-
-  vi.mock(import('/@/util.js'), () => {
-    return {
-      isMac: vi.fn().mockReturnValue(false),
-    };
   });
 
   // check opendialog is failing without browserwindow

@@ -74,7 +74,9 @@ const showSetupButton = $derived(
   globalContext && (isOnboardingEnabled(provider, globalContext) || hasAnyConfiguration(provider)),
 );
 
-const showUpdateButton = $derived(provider.updateInfo?.version && provider.version !== provider.updateInfo?.version);
+const showUpdateButton = $derived(
+  provider.version && provider.updateInfo?.version && provider.version !== provider.updateInfo?.version,
+);
 
 function handleCreateNew(): Promise<void> {
   return onCreateNew(provider, providerDisplayName);
@@ -95,7 +97,7 @@ function handleSetup(): void {
       aria-label="Setup {provider.name}"
       title="Setup {provider.name}"
       onclick={handleSetup}>
-      Setup ...
+      Setup...
     </Button>
   {:else}
     <div class="flex flex-row justify-around flex-wrap gap-2">
@@ -106,7 +108,7 @@ function handleSetup(): void {
             inProgress={providerInstallationInProgress}
             disabled={isCreateButtonDisabled}
             onclick={handleCreateNew}>
-            {buttonTitle} ...
+            {buttonTitle}...
           </Button>
         </Tooltip>
       {/if}

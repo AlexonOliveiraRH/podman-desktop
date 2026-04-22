@@ -16,13 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import { KubeConfig } from '@kubernetes/client-node';
 import * as k8s from '@kubernetes/client-node';
+import { KubeConfig } from '@kubernetes/client-node';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { KindClusterWatcher } from './kind-cluster-watcher';
 
-vi.mock('@kubernetes/client-node');
+vi.mock(import('@kubernetes/client-node'));
 
 describe('KindClusterWatcher', () => {
   let mockKubeConfig: KubeConfig;

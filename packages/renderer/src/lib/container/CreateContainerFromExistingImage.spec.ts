@@ -79,13 +79,7 @@ const localImageList = [
   } as unknown as ImageInfo,
 ];
 
-vi.mock('tinro', () => {
-  return {
-    router: {
-      goto: vi.fn(),
-    },
-  };
-});
+vi.mock(import('tinro'));
 
 const pStatus: ProviderStatus = 'started';
 const pInfo: ProviderContainerConnectionInfo = {
@@ -96,6 +90,10 @@ const pInfo: ProviderContainerConnectionInfo = {
   endpoint: {
     socketPath: '',
   },
+  canStart: false,
+  canStop: false,
+  canEdit: false,
+  canDelete: false,
   type: 'podman',
 };
 const providerInfo = {

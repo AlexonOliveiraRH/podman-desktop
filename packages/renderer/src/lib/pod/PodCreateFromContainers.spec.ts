@@ -35,6 +35,8 @@ const providerInfo: ProviderInfo = {
     icon: 'img',
   },
   status: 'started',
+  canStart: false,
+  canStop: false,
   warnings: [],
   containerProviderConnectionCreation: true,
   detectionChecks: [],
@@ -48,6 +50,10 @@ const providerInfo: ProviderInfo = {
         socketPath: 'socket',
       },
       lifecycleMethods: ['start', 'stop', 'delete'],
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       type: 'podman',
     },
   ],
@@ -259,8 +265,9 @@ test('Show warning if multiple containers use the same port', async () => {
   podCreationHolder.set(podCreationSamePortContainers);
 
   render(PodCreateFromContainers, {});
-  const warningLabel = await screen.findByLabelText('Warning Message Content');
+  const warningLabel = await screen.findByRole('alert');
   expect(warningLabel).toBeInTheDocument();
+  expect(warningLabel).toHaveTextContent('Containers cont_1 and cont_1 use same port 80');
 });
 
 test('Do not show warning if multiple containers use different ports', async () => {

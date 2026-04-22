@@ -80,9 +80,10 @@ test('Expect bulk button is bringing confirmation but not deleting anything', as
   await fireEvent.click(bulkButton);
 
   expect(window.showMessageBox).toHaveBeenCalledWith({
-    buttons: ['Yes', 'Cancel'],
+    buttons: ['Delete', 'Cancel'],
     message: 'Are you sure you want to bulk delete operation?',
     title: 'Confirmation',
+    type: 'danger',
   });
 
   // expect we did not call the clearTask method

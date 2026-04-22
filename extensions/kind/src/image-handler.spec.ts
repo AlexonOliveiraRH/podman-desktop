@@ -16,25 +16,28 @@
  * SPDX-License-Identifier: Apache-2.0
  ***********************************************************************/
 
-import * as fs from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import * as os from 'node:os';
 
 import * as extensionApi from '@podman-desktop/api';
 import type { Mock } from 'vitest';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 import { ImageHandler } from './image-handler';
-import { getKindPath } from './util';
+import { getKindPath, getTempDir } from './util';
 
 let imageHandler: ImageHandler;
 
-vi.mock('./util', async () => {
+vi.mock(import('./util'), async () => {
   return {
     getKindPath: vi.fn(),
+    getTempDir: vi.fn(),
   };
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getTempDir).mockResolvedValue(os.tmpdir());
   imageHandler = new ImageHandler();
 });
 
@@ -58,7 +61,10 @@ test('expect error to be raised if no clusters are given', async () => {
 
 test('expect image name to be given', async () => {
   (extensionApi.containerEngine.saveImage as Mock).mockImplementation(
-    (engineId: string, id: string, filename: string) => fs.promises.open(filename, 'w'),
+    (_engineId: string, _id: string, filename: string) => {
+      writeFileSync(filename, '');
+      return Promise.resolve();
+    },
   );
 
   await imageHandler.moveImage(
@@ -71,7 +77,7 @@ test('expect image name to be given', async () => {
 
 test('expect getting showInformationMessage when image is pushed', async () => {
   (extensionApi.containerEngine.saveImage as Mock).mockImplementation(
-    (engineId: string, id: string, filename: string) => fs.promises.open(filename, 'w'),
+    (_engineId: string, _id: string, filename: string) => writeFileSync(filename, ''),
   );
 
   await imageHandler.moveImage(
@@ -84,7 +90,7 @@ test('expect getting showInformationMessage when image is pushed', async () => {
 
 test('expect image name and tag to be given', async () => {
   (extensionApi.containerEngine.saveImage as Mock).mockImplementation(
-    (engineId: string, id: string, filename: string) => fs.promises.open(filename, 'w'),
+    (_engineId: string, _id: string, filename: string) => writeFileSync(filename, ''),
   );
 
   await imageHandler.moveImage(
@@ -97,7 +103,7 @@ test('expect image name and tag to be given', async () => {
 
 test('expect cli is called with right PATH', async () => {
   (extensionApi.containerEngine.saveImage as Mock).mockImplementation(
-    (engineId: string, id: string, filename: string) => fs.promises.open(filename, 'w'),
+    (_engineId: string, _id: string, filename: string) => writeFileSync(filename, ''),
   );
 
   (getKindPath as Mock).mockReturnValue('my-custom-path');

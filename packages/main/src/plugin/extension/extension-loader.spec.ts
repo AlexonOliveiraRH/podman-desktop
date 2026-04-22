@@ -81,7 +81,10 @@ import type { AnalyzedExtension, ExtensionAnalyzer } from './extension-analyzer.
 import type { ExtensionDevelopmentFolders } from './extension-development-folders.js';
 import type { ActivatedExtension, AnalyzedExtensionWithApi, RequireCacheDict } from './extension-loader.js';
 import { ExtensionLoader } from './extension-loader.js';
+import type { ExtensionManifest } from './extension-manifest-schema.js';
 import type { ExtensionWatcher } from './extension-watcher.js';
+
+vi.mock(import('node:fs'));
 
 class TestExtensionLoader extends ExtensionLoader {
   public override async setupScanningDirectory(): Promise<void> {
@@ -166,7 +169,9 @@ const apiSender: ApiSenderType = { send: vi.fn() } as unknown as ApiSenderType;
 
 const trayMenuRegistry: TrayMenuRegistry = {} as unknown as TrayMenuRegistry;
 
-const messageBox: MessageBox = {} as MessageBox;
+const messageBox: MessageBox = {
+  showDialog: vi.fn(),
+} as unknown as MessageBox;
 
 const progress: ProgressImpl = {
   withProgress: vi.fn(),
@@ -258,6 +263,7 @@ const contributionManager: ContributionManager = {
 const webviewRegistry: WebviewRegistry = {
   listSimpleWebviews: vi.fn(),
   listWebviews: vi.fn(),
+  stop: vi.fn(),
 } as unknown as WebviewRegistry;
 
 const navigationManager: NavigationManager = new NavigationManager(
@@ -321,12 +327,12 @@ const createApi = (disposables?: { dispose(): unknown }[]): typeof containerDesk
   return extensionLoader.createApi(analyzedExtension);
 };
 
-vi.mock('electron', () => {
+vi.mock(import('electron'), () => {
   return {
     app: {
       getVersion: vi.fn(),
     },
-  };
+  } as unknown as typeof Electron;
 });
 
 vi.mock(import('/@/util.js'));
@@ -388,7 +394,7 @@ beforeEach(() => {
   );
 });
 
-vi.mock('node:fs');
+vi.mock(import('node:fs'));
 
 beforeEach(() => {
   telemetryTrackMock.mockImplementation(() => Promise.resolve());
@@ -544,7 +550,6 @@ test('Should load file from watching scanning folder', async () => {
   // reduce timeout delay for tests
   extensionLoader.setWatchTimeout(50);
 
-  vi.mock('node:fs');
   // mock fs.watch
   const fsWatchMock = vi.spyOn(fs, 'watch');
   fsWatchMock.mockImplementation((filename: fs.PathLike, listener?: fs.WatchListener<string>): fs.FSWatcher => {
@@ -601,7 +606,7 @@ test('Verify extension error leads to failed state', async () => {
       mainPath: '',
       removable: false,
       devMode: false,
-      manifest: {},
+      manifest: {} as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -632,7 +637,7 @@ test('Verify extension subscriptions are disposed when failed state reached', as
       mainPath: '',
       removable: false,
       devMode: false,
-      manifest: {},
+      manifest: {} as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -667,7 +672,7 @@ test('Verify extension activate with a long timeout is flagged as error', async 
       mainPath: '',
       removable: false,
       devMode: false,
-      manifest: {},
+      manifest: {} as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -682,7 +687,7 @@ test('Verify extension activate with a long timeout is flagged as error', async 
 
   expect(extensionLoader.getExtensionStateErrors().get(id)).toBeDefined();
   expect(extensionLoader.getExtensionStateErrors().get(id)?.toString()).toContain(
-    'Extension extension.id activation timed out after 1 seconds',
+    'Extension extension.id activation timed out after 1000ms',
   );
   expect(extensionLoader.getExtensionState().get(id)).toBe('failed');
 });
@@ -699,7 +704,7 @@ test('Verify extension load triggers an onDidChange event', async () => {
     mainPath: '',
     removable: false,
     devMode: false,
-    manifest: {},
+    manifest: {} as unknown as ExtensionManifest,
     subscriptions: [],
     readme: '',
     dispose: vi.fn(),
@@ -722,7 +727,7 @@ test('Verify extension load', async () => {
     devMode: false,
     manifest: {
       version: '1.1',
-    },
+    } as unknown as ExtensionManifest,
     subscriptions: [],
     readme: '',
     dispose: vi.fn(),
@@ -765,7 +770,7 @@ test('Verify extension do not add configuration to subscriptions', async () => {
           title: 'dummy-configuration-title',
         },
       },
-    },
+    } as unknown as ExtensionManifest,
     subscriptions: subscriptions,
     readme: '',
     dispose: vi.fn(),
@@ -797,7 +802,7 @@ test('Verify extension activate registers extension features and the disposable 
       contributes: {
         features: ['feature1', 'feature2'],
       },
-    },
+    } as unknown as ExtensionManifest,
     subscriptions,
     readme: '',
     dispose: vi.fn(),
@@ -1256,6 +1261,30 @@ describe('setContextValue', async () => {
   });
 });
 
+describe('showDangerMessage', () => {
+  test('should call messageBox.showDialog with danger type', async () => {
+    const api = createApi();
+
+    vi.mocked(messageBox.showDialog).mockResolvedValue('Yes');
+
+    const result = await api.window.showDangerMessage('Are you sure?', 'Yes', 'No');
+
+    expect(messageBox.showDialog).toHaveBeenCalledWith('danger', 'dname', 'Are you sure?', ['Yes', 'No']);
+    expect(result).toBe('Yes');
+  });
+
+  test('should call messageBox.showDialog with no items', async () => {
+    const api = createApi();
+
+    vi.mocked(messageBox.showDialog).mockResolvedValue(undefined);
+
+    const result = await api.window.showDangerMessage('Danger message');
+
+    expect(messageBox.showDialog).toHaveBeenCalledWith('danger', 'dname', 'Danger message', []);
+    expect(result).toBeUndefined();
+  });
+});
+
 describe('Removing extension by user', async () => {
   const ExtID = 'company.ext-id';
   test('sends telemetry w/o error when whens succeeds', async () => {
@@ -1312,8 +1341,6 @@ describe('Removing extension by user', async () => {
 });
 
 test('check dispose when deactivating', async () => {
-  vi.mock('node:fs');
-
   const extensionId = 'fooPublisher.fooName';
   extensionLoader.setActivatedExtension(extensionId, {
     id: extensionId,
@@ -1349,7 +1376,7 @@ test('Verify extension uri', async () => {
       mainPath: '',
       removable: false,
       devMode: false,
-      manifest: {},
+      manifest: {} as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -1385,7 +1412,7 @@ test('Verify exports and packageJSON', async () => {
       devMode: false,
       manifest: {
         foo: 'bar',
-      },
+      } as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -2409,8 +2436,6 @@ describe('containerEngine', async () => {
 
 describe('extensionContext', async () => {
   test('secrets', async () => {
-    vi.mock('node:fs');
-
     vi.mocked(fs.existsSync).mockReturnValue(true);
 
     const extension: AnalyzedExtension = {
@@ -2885,7 +2910,7 @@ test('ExtensionLoader async dispose should stop all extensions', async () => {
       mainPath: '',
       removable: false,
       devMode: false,
-      manifest: {},
+      manifest: {} as unknown as ExtensionManifest,
       subscriptions: [],
       readme: '',
       dispose: vi.fn(),
@@ -2911,5 +2936,10 @@ describe('env API', () => {
   test('expect env.appName to be product name', () => {
     const api = createApi();
     expect(api.env.appName).toBe(product.name);
+  });
+
+  test('expect env.urlProtocol to be product urlProtocol', () => {
+    const api = createApi();
+    expect(api.env.urlProtocol).toBe(product.urlProtocol);
   });
 });

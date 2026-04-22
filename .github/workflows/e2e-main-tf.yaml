@@ -28,14 +28,9 @@ on:
         type: string
         required: true
       npm_target:
-        description: npm tests target
-        type: choice
-        default: 'all'
-        options:
-          - e2e
-          - kubernetes
-          - smoke
-          - all
+        description: 'TMT plan target to run (e.g. smoke, e2e, kubernetes, all)'
+        type: string
+        default: 'e2e'
 
 jobs:
   pd-e2e-testing-farm-ci:
@@ -87,7 +82,7 @@ jobs:
 
       - name: Publish test report to PR
         if: always()
-        uses: mikepenz/action-junit-report@74626db7353a25a20a72816467ebf035f674c5f8
+        uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386
         with:
           fail_on_failure: true
           include_passed: true
@@ -127,7 +122,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: testing-farm-artifacts-${{ matrix.fedora-version }}
           path: |

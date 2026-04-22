@@ -21,6 +21,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
+import * as clientNode from '@kubernetes/client-node';
 import {
   type AppsV1Api,
   BatchV1Api,
@@ -43,7 +44,6 @@ import {
   type V1Status,
   type Watch,
 } from '@kubernetes/client-node';
-import * as clientNode from '@kubernetes/client-node';
 import type { FileSystemWatcher } from '@podman-desktop/api';
 import { type ForwardConfig, type ForwardOptions, type V1Route, WorkloadKind } from '@podman-desktop/core-api';
 import type { ApiSenderType } from '@podman-desktop/core-api/api-sender';
@@ -1013,10 +1013,9 @@ test('Expect apply should work with multiple files', async () => {
   const client = createTestClient('default');
   const manifests = { kind: test, metadata: { name: 'n1', annotations: test } } as unknown as KubernetesObject;
   const createdObjs = [{ kind: 'created' }, { kind: 'created' }];
-  let count = 0;
   vi.spyOn(client, 'loadManifestsFromFile').mockResolvedValue([manifests]);
   makeApiClientMock.mockReturnValue({
-    create: vi.fn().mockReturnValue(createdObjs[count++]),
+    create: vi.fn().mockReturnValueOnce(createdObjs[0]).mockReturnValueOnce(createdObjs[1]),
   });
 
   const objects = await client.applyResourcesFromFile('default', ['some-file.yaml', 'another-file.yaml']);

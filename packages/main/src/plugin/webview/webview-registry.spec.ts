@@ -20,8 +20,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { ApiSenderType } from '@podman-desktop/core-api/api-sender';
-import type { Router } from 'express';
 import type express from 'express';
+import type { Router } from 'express';
 import type { MockInstance } from 'vitest';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -30,20 +30,24 @@ import type { WebviewPanelImpl } from './webview-panel-impl.js';
 import { WebviewRegistry } from './webview-registry.js';
 
 // mock node:fs
-vi.mock('node:fs');
+vi.mock(import('node:fs'));
 
 // mock express dependency and default export
-vi.mock('express', () => ({
-  default: (): typeof express =>
+vi.mock(
+  import('express'),
+  () =>
     ({
-      use: vi.fn(),
-      listen: vi.fn().mockImplementation((_portNumber, func: () => void) => {
-        func();
-        return { on: vi.fn() };
-      }),
-      on: vi.fn().mockResolvedValue(undefined),
+      default: (): typeof express =>
+        ({
+          use: vi.fn(),
+          listen: vi.fn().mockImplementation((_portNumber, _hostname, func: () => void) => {
+            func();
+            return { on: vi.fn() };
+          }),
+          on: vi.fn().mockResolvedValue(undefined),
+        }) as unknown as typeof express,
     }) as unknown as typeof express,
-}));
+);
 
 // provide a custom free port number
 vi.mock(import('/@/plugin/util/port.js'), () => ({

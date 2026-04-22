@@ -87,7 +87,7 @@ export class ContainerDetailsPage extends DetailsPage {
     return test.step('Delete container', async () => {
       await playExpect(this.deleteButton).toBeEnabled();
       await this.deleteButton.click();
-      await handleConfirmationDialog(this.page);
+      await handleConfirmationDialog(this.page, 'Confirmation', true, 'Delete');
       return new ContainersPage(this.page);
     });
   }
@@ -155,5 +155,9 @@ export class ContainerDetailsPage extends DetailsPage {
       await playExpect(this.clearLogsButton).toBeVisible();
       await this.clearLogsButton.click();
     });
+  }
+
+  async searchInInspectEditor(text: string): Promise<boolean> {
+    return this.searchInEditor(ContainerDetailsPage.INSPECT_TAB, text);
   }
 }

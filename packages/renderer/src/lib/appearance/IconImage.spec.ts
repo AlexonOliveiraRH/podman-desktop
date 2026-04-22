@@ -24,16 +24,17 @@ import { render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
 
+import type { AppearanceUtil } from './appearance-util';
 import IconImage from './IconImage.svelte';
 
 const getConfigurationValueMock = vi.fn();
 const getImageMock = vi.fn();
 
-vi.mock('./appearance-util', () => {
+vi.mock(import('./appearance-util'), () => {
   return {
     AppearanceUtil: class {
       getImage = getImageMock;
-    },
+    } as unknown as typeof AppearanceUtil,
   };
 });
 
@@ -46,7 +47,7 @@ beforeEach(() => {
 });
 
 test('Expect valid source and alt text with dark mode', async () => {
-  getImageMock.mockResolvedValue('dark.png');
+  getImageMock.mockReturnValue('dark.png');
 
   const image = render(IconImage, { image: { light: 'light.png', dark: 'dark.png' }, alt: 'this is alt text' });
 
@@ -64,7 +65,7 @@ test('Expect valid source and alt text with dark mode', async () => {
 });
 
 test('Expect valid source and alt text with light mode', async () => {
-  getImageMock.mockResolvedValue('light.png');
+  getImageMock.mockReturnValue('light.png');
 
   const image = render(IconImage, { image: { light: 'light.png', dark: 'dark.png' }, alt: 'this is alt text' });
 
@@ -85,7 +86,7 @@ test('Expect valid source and alt text with light mode', async () => {
 
 test('Expect no alt attribute if missing and default image', async () => {
   getConfigurationValueMock.mockResolvedValue(AppearanceSettings.LightEnumValue);
-  getImageMock.mockResolvedValue('image.png');
+  getImageMock.mockReturnValue('image.png');
 
   const image = render(IconImage, { image: 'image.png' });
 
@@ -103,7 +104,7 @@ test('Expect no alt attribute if missing and default image', async () => {
 });
 
 test('Expect string as image', async () => {
-  getImageMock.mockResolvedValue('image1');
+  getImageMock.mockReturnValue('image1');
   const image = render(IconImage, { image: 'image1', alt: 'this is alt text' });
 
   // wait for image to be loaded

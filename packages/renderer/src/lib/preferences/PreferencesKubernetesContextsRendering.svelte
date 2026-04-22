@@ -96,7 +96,7 @@ async function handleDeleteContext(contextName: string): Promise<void> {
       title: 'Delete Context',
       message:
         'You will delete the current context. If you delete it, you will need to switch to another context. Continue?',
-      buttons: ['Yes', 'Cancel'],
+      buttons: ['Delete', 'Cancel'],
     });
     if (result.response !== 0) {
       return;
@@ -281,7 +281,7 @@ async function connect(contextName: string): Promise<void> {
             <ErrorMessage class="text-sm" aria-label="Context Error" error={context.error} />
           {/if}
         </div>
-        <div class="grow flex-column divide-gray-900 text-[var(--pd-invert-content-card-text)]">
+        <div class="grow flex-column divide-(--pd-invert-content-divider) text-(--pd-invert-content-card-text)">
           <div class="flex flex-row">
             <div class="flex-none w-36">
               {#if context.isReachable || context.isOffline}

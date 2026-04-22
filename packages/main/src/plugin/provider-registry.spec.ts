@@ -455,6 +455,10 @@ test('expect isProviderContainerConnection returns true with a ProviderContainer
       socketPath: '/endpoint1.sock',
     },
     lifecycleMethods: undefined,
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'started',
   };
   const res = providerRegistry.isProviderContainerConnection(connection);
@@ -469,6 +473,10 @@ test('expect isProviderContainerConnection returns false with a ProviderKubernet
       apiURL: 'url',
     },
     lifecycleMethods: undefined,
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'started',
   };
   const res = providerRegistry.isProviderContainerConnection(connection);
@@ -847,6 +855,10 @@ describe('should send events when starting a container connection', async () => 
       endpoint: {
         socketPath: '/endpoint1.sock',
       },
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'started',
       vmType: {
         id: 'libkrun',
@@ -966,6 +978,10 @@ test('should send events when starting a Kubernetes connection', async () => {
     connectionType: 'kubernetes',
     name: 'connection',
     endpoint: { apiURL: 'endpoint' },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'started',
   };
 
@@ -1016,6 +1032,10 @@ test('should send events when starting a VM connection', async () => {
   const connection: ProviderVmConnectionInfo = {
     connectionType: 'vm',
     name: 'connection',
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'started',
   };
 
@@ -1049,6 +1069,108 @@ test('should send events when starting a VM connection', async () => {
   );
   const event = onDidUpdateVmConnectionMock.mock.calls[0]?.[0];
   expect(event?.connection.status()).toEqual('started');
+});
+
+test('should persist error in connectionErrors map when start fails', async () => {
+  const startMock = vi.fn().mockRejectedValue(new Error('Connection refused'));
+  const stopMock = vi.fn();
+
+  const provider = providerRegistry.createProvider('id', 'name', {
+    id: 'internal',
+    name: 'internal',
+    status: 'installed',
+  });
+  const connection: ProviderContainerConnectionInfo = {
+    connectionType: 'container',
+    name: 'connection',
+    displayName: 'connection',
+    endpoint: { socketPath: '/endpoint1.sock' },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
+    status: 'stopped',
+    type: 'podman',
+  };
+
+  provider.registerContainerProviderConnection({
+    name: 'connection',
+    lifecycle: {
+      start: startMock,
+      stop: stopMock,
+    },
+    type: 'podman',
+    endpoint: {
+      socketPath: '/endpoint1.sock',
+    },
+    status() {
+      return 'stopped';
+    },
+  });
+
+  const onDidUpdateMock = vi.fn();
+  providerRegistry.onDidUpdateContainerConnection(onDidUpdateMock);
+
+  await expect(providerRegistry.startProviderConnection('0', connection)).rejects.toThrow('Connection refused');
+
+  expect(onDidUpdateMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: 'starting',
+      error: 'Connection refused',
+    }),
+  );
+});
+
+test('should clear error from connectionErrors map when start succeeds', async () => {
+  const startMock = vi.fn();
+  const stopMock = vi.fn();
+
+  const provider = providerRegistry.createProvider('id', 'name', {
+    id: 'internal',
+    name: 'internal',
+    status: 'installed',
+  });
+
+  provider.registerKubernetesProviderConnection({
+    name: 'connection',
+    lifecycle: {
+      start: startMock,
+      stop: stopMock,
+    },
+    endpoint: {
+      apiURL: 'endpoint',
+    },
+    status() {
+      return 'started';
+    },
+  });
+
+  const connection: ProviderKubernetesConnectionInfo = {
+    connectionType: 'kubernetes',
+    name: 'connection',
+    endpoint: { apiURL: 'endpoint' },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
+    status: 'stopped',
+  };
+
+  const onDidUpdateMock = vi.fn();
+  providerRegistry.onDidUpdateKubernetesConnection(onDidUpdateMock);
+
+  await providerRegistry.startProviderConnection('0', connection);
+
+  expect(onDidUpdateMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: 'started',
+    }),
+  );
+  expect(onDidUpdateMock).not.toHaveBeenCalledWith(
+    expect.objectContaining({
+      error: expect.any(String),
+    }),
+  );
 });
 
 describe('when auto-starting a container connection', async () => {
@@ -1085,6 +1207,10 @@ describe('when auto-starting a container connection', async () => {
       endpoint: {
         socketPath: '/endpoint1.sock',
       },
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'started',
       vmType: {
         id: 'libkrun',
@@ -1263,6 +1389,10 @@ test('should send events when stopping a container connection', async () => {
     endpoint: {
       socketPath: '/endpoint1.sock',
     },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'stopped',
     vmType: {
       id: 'libkrun',
@@ -1334,6 +1464,10 @@ test('should send events when container connection status change', async () => {
     endpoint: {
       socketPath: '/endpoint1.sock',
     },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'stopped',
     vmType: {
       id: 'libkrun',
@@ -1413,6 +1547,10 @@ test('should send events when stopping a Kubernetes connection', async () => {
     endpoint: {
       apiURL: 'endpoint1',
     },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'stopped',
   };
 
@@ -1463,6 +1601,10 @@ test('should send events when stopping a VM connection', async () => {
   const connection: ProviderVmConnectionInfo = {
     connectionType: 'vm',
     name: 'connection',
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'stopped',
   };
 
@@ -1562,6 +1704,10 @@ test('should retrieve context of container provider', async () => {
     endpoint: {
       socketPath: '/endpoint1.sock',
     },
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
     status: 'stopped',
   };
 
@@ -1617,6 +1763,10 @@ test('should retrieve context of kubernetes provider', async () => {
       endpoint: {
         apiURL: 'url',
       },
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'stopped',
     };
 
@@ -1673,6 +1823,10 @@ test('should retrieve context of VM provider', async () => {
     const connection: ProviderVmConnectionInfo = {
       connectionType: 'vm',
       name: 'connection',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'stopped',
     };
 
@@ -2341,6 +2495,10 @@ describe('shellInProviderConnection', () => {
       endpoint: {
         socketPath: '/endpoint1.sock',
       },
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'started',
       vmType: {
         id: 'libkrun',
@@ -2434,6 +2592,10 @@ describe('shellInProviderConnection', () => {
     const connection: ProviderVmConnectionInfo = {
       connectionType: 'vm',
       name: 'connection',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
       status: 'started',
     };
 

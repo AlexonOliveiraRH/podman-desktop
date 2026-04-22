@@ -62,6 +62,10 @@ const providerInfo: ProviderInfo = {
         socketPath: 'socket',
       },
       lifecycleMethods: ['start', 'stop', 'delete'],
+      canStart: true,
+      canStop: true,
+      canEdit: false,
+      canDelete: true,
       type: 'podman',
       vmType: {
         id: 'libkrun',
@@ -77,6 +81,10 @@ const providerInfo: ProviderInfo = {
         socketPath: 'socket',
       },
       lifecycleMethods: ['start', 'stop', 'delete'],
+      canStart: true,
+      canStop: true,
+      canEdit: false,
+      canDelete: true,
       type: 'podman',
       vmType: {
         id: 'wsl',
@@ -96,16 +104,12 @@ const providerInfo: ProviderInfo = {
   containerProviderConnectionCreationDisplayName: 'Podman machine',
   kubernetesProviderConnectionInitialization: false,
   cleanupSupport: false,
+  canStart: false,
+  canStop: false,
 };
 
 // mock the router
-vi.mock('tinro', () => {
-  return {
-    router: {
-      goto: vi.fn(),
-    },
-  };
-});
+vi.mock(import('tinro'));
 
 // getOsPlatformMock is needed when using PreferencesResourcesRenderingCopyButton
 const getOsPlatformMock = vi.fn().mockResolvedValue('linux');
@@ -165,6 +169,10 @@ describe.each<{
             socketPath: 'socket',
           },
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
           type: 'podman',
           vmType: {
             id: 'libkrun',
@@ -180,6 +188,10 @@ describe.each<{
             socketPath: 'socket',
           },
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
           type: 'podman',
           vmType: {
             id: 'wsl',
@@ -199,6 +211,8 @@ describe.each<{
       containerProviderConnectionCreationDisplayName: 'Podman machine',
       kubernetesProviderConnectionInitialization: false,
       cleanupSupport: false,
+      canStart: false,
+      canStop: false,
     },
     startFailedImplemented: true,
   },
@@ -234,6 +248,10 @@ describe.each<{
             apiURL: 'url',
           },
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
         },
         {
           connectionType: 'kubernetes',
@@ -243,6 +261,10 @@ describe.each<{
             apiURL: 'url',
           },
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
         },
       ],
       installationSupport: false,
@@ -257,6 +279,8 @@ describe.each<{
       kubernetesProviderConnectionCreationDisplayName: 'Kluster',
       kubernetesProviderConnectionInitialization: false,
       cleanupSupport: false,
+      canStart: false,
+      canStop: false,
     },
     startFailedImplemented: false,
   },
@@ -289,12 +313,20 @@ describe.each<{
           name: defaultVmConnectionName,
           status: 'started',
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
         },
         {
           connectionType: 'vm',
           name: secondaryVmConnectionName,
           status: 'stopped',
           lifecycleMethods: ['start', 'stop', 'delete'],
+          canStart: true,
+          canStop: true,
+          canEdit: false,
+          canDelete: true,
         },
       ],
       installationSupport: false,
@@ -308,6 +340,8 @@ describe.each<{
       containerProviderConnectionInitialization: false,
       kubernetesProviderConnectionInitialization: false,
       cleanupSupport: false,
+      canStart: false,
+      canStop: false,
     },
     startFailedImplemented: true,
   },
@@ -332,7 +366,7 @@ describe.each<{
     const button = screen.getByRole('button', { name: 'Create new foo-provider' });
     expect(button).toBeInTheDocument();
     // expect default create title
-    expect(button).toHaveTextContent('Create new ...');
+    expect(button).toHaveTextContent('Create new...');
   });
 
   test('Expect to see elements regarding foo provider', async () => {
@@ -345,7 +379,7 @@ describe.each<{
     const button = screen.getByRole('button', { name: 'Create new foo' });
     expect(button).toBeInTheDocument();
     // expect custom create title
-    expect(button).toHaveTextContent('Connect ...');
+    expect(button).toHaveTextContent('Connect...');
   });
 
   test('Expect to scroll to the focused element if focus prop is provided', async () => {
@@ -436,36 +470,32 @@ describe.each<{
       expect(vi.mocked(window.startProviderConnectionLifecycle)).toHaveBeenCalled();
     });
 
-    test(
-      'click start and make it fail',
-      {
-        skip: !startFailedImplemented,
-      },
-      async () => {
-        const customProviderInfo: ProviderInfo = { ...providerInfo };
-        setConnectionStatus(customProviderInfo, 0, 'stopped');
-        providerInfos.set([customProviderInfo]);
-        const { getByRole, getByLabelText } = render(PreferencesResourcesRendering, {});
+    test('click start and make it fail', {
+      skip: !startFailedImplemented,
+    }, async () => {
+      const customProviderInfo: ProviderInfo = { ...providerInfo };
+      setConnectionStatus(customProviderInfo, 0, 'stopped');
+      providerInfos.set([customProviderInfo]);
+      const { getByRole, getByLabelText } = render(PreferencesResourcesRendering, {});
 
-        // get the region containing the content for the default connection
-        const region = getByRole('region', { name: defaultName });
+      // get the region containing the content for the default connection
+      const region = getByRole('region', { name: defaultName });
 
-        const startButton = within(region).getByRole('button', { name: 'Start' });
-        expect(startButton).toBeInTheDocument();
-        expect(!startButton.classList.contains('cursor-not-allowed')).toBeTruthy();
-        vi.mocked(window.startProviderConnectionLifecycle).mockClear();
-        await userEvent.click(startButton);
-        expect(window.startProviderConnectionLifecycle).toHaveBeenCalledOnce();
-        const call = vi.mocked(window.startProviderConnectionLifecycle).mock.calls[0];
-        const key = call[2];
-        const logger = call[3];
-        assert(!!logger);
-        logger(key, 'error', ['an error']);
-        await vi.waitFor(() => {
-          getByLabelText(/failed/);
-        });
-      },
-    );
+      const startButton = within(region).getByRole('button', { name: 'Start' });
+      expect(startButton).toBeInTheDocument();
+      expect(!startButton.classList.contains('cursor-not-allowed')).toBeTruthy();
+      vi.mocked(window.startProviderConnectionLifecycle).mockClear();
+      await userEvent.click(startButton);
+      expect(window.startProviderConnectionLifecycle).toHaveBeenCalledOnce();
+      const call = vi.mocked(window.startProviderConnectionLifecycle).mock.calls[0];
+      const key = call[2];
+      const logger = call[3];
+      assert(!!logger);
+      logger(key, 'error', ['an error']);
+      await vi.waitFor(() => {
+        getByLabelText(/failed/);
+      });
+    });
   });
 
   test('Expect to redirect to create New page if provider is installed', async () => {
@@ -799,6 +829,130 @@ describe('container provider connections', () => {
 
     const text = within(region).getByText('Dummy Secondary Connection');
     expect(text).toBeDefined();
+  });
+});
+
+describe('container connection resource metrics', () => {
+  const resourceConfigProperties = [
+    {
+      parentId: 'preferences.podman',
+      title: 'CPUs',
+      id: 'podman.machine.cpus',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'cpu',
+      description: 'CPUs',
+    },
+    {
+      parentId: 'preferences.podman',
+      title: 'CPU Usage',
+      id: 'podman.machine.cpusUsage',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'cpuUsage',
+      description: 'CPU Usage',
+      hidden: true,
+    },
+    {
+      parentId: 'preferences.podman',
+      title: 'Memory',
+      id: 'podman.machine.memory',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'memory',
+      description: 'Memory',
+    },
+    {
+      parentId: 'preferences.podman',
+      title: 'Memory Usage',
+      id: 'podman.machine.memoryUsage',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'memoryUsage',
+      description: 'Memory Usage',
+      hidden: true,
+    },
+    {
+      parentId: 'preferences.podman',
+      title: 'Disk Size',
+      id: 'podman.machine.diskSize',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'diskSize',
+      description: 'Disk size',
+    },
+    {
+      parentId: 'preferences.podman',
+      title: 'Disk Size Usage',
+      id: 'podman.machine.diskSizeUsage',
+      type: 'number' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'diskSizeUsage',
+      description: 'Disk Size Usage',
+      hidden: true,
+    },
+  ];
+
+  test('renders Donut charts when resource metrics are available', async () => {
+    const singleProvider: ProviderInfo = structuredClone(providerInfo);
+    singleProvider.containerConnections = [providerInfo.containerConnections[0]];
+    providerInfos.set([singleProvider]);
+    configurationProperties.set(resourceConfigProperties);
+    vi.mocked(window.getConfigurationValue).mockResolvedValue(4);
+
+    render(PreferencesResourcesRendering, {});
+
+    await vi.waitFor(() => {
+      const configGroup = screen.getByRole('group', { name: 'Provider Configuration' });
+      expect(configGroup).toBeInTheDocument();
+      expect(within(configGroup).getByText('CPUs')).toBeInTheDocument();
+      expect(within(configGroup).getByText('Memory')).toBeInTheDocument();
+      expect(within(configGroup).getByText('Disk size')).toBeInTheDocument();
+    });
+  });
+
+  test('renders non-resource configs as plain values', async () => {
+    const nonResourceConfig = {
+      parentId: 'preferences.podman',
+      title: 'User mode networking',
+      id: 'podman.machine.userModeNetworking',
+      type: 'boolean' as const,
+      scope: 'ContainerConnection' as const,
+      format: 'boolean',
+      description: 'User mode networking',
+    };
+    const singleProvider: ProviderInfo = structuredClone(providerInfo);
+    singleProvider.containerConnections = [providerInfo.containerConnections[0]];
+    providerInfos.set([singleProvider]);
+    configurationProperties.set([...resourceConfigProperties, nonResourceConfig]);
+    vi.mocked(window.getConfigurationValue).mockResolvedValue(true);
+
+    render(PreferencesResourcesRendering, {});
+
+    await vi.waitFor(() => {
+      const configGroup = screen.getByRole('group', { name: 'Provider Configuration' });
+      expect(configGroup).toBeInTheDocument();
+      expect(within(configGroup).getByText(/User mode networking/)).toBeInTheDocument();
+    });
+  });
+
+  test('does not render resource-format configs as plain text rows', async () => {
+    const singleProvider: ProviderInfo = structuredClone(providerInfo);
+    singleProvider.containerConnections = [providerInfo.containerConnections[0]];
+    providerInfos.set([singleProvider]);
+    configurationProperties.set(resourceConfigProperties);
+    vi.mocked(window.getConfigurationValue).mockResolvedValue(4);
+
+    render(PreferencesResourcesRendering, {});
+
+    await vi.waitFor(() => {
+      const configGroup = screen.getByRole('group', { name: 'Provider Configuration' });
+      expect(configGroup).toBeInTheDocument();
+    });
+    const configGroup = screen.getByRole('group', { name: 'Provider Configuration' });
+    expect(within(configGroup).queryByText(/CPU Usage: /)).not.toBeInTheDocument();
+    expect(within(configGroup).queryByText(/Memory Usage: /)).not.toBeInTheDocument();
+    expect(within(configGroup).queryByText(/Disk Size Usage: /)).not.toBeInTheDocument();
   });
 });
 

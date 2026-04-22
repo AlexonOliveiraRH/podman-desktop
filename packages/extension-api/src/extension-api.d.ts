@@ -401,6 +401,13 @@ declare module '@podman-desktop/api' {
     shellAccess?: ProviderConnectionShellAccess;
     lifecycle?: ProviderConnectionLifecycle;
     status(): ProviderConnectionStatus;
+    /**
+     * Optional error message describing why this connection is in a failed state.
+     * The connection retains its lifecycle status (e.g. 'starting', 'stopped') while
+     * this field provides the error details. Cleared automatically on successful
+     * lifecycle transitions.
+     */
+    error?: string;
     vmType?: string;
     /**
      * the vmTypeDisplayName property cannot be set if vmType is undefined
@@ -528,6 +535,11 @@ declare module '@podman-desktop/api' {
     endpoint: KubernetesProviderConnectionEndpoint;
     lifecycle?: ProviderConnectionLifecycle;
     status(): ProviderConnectionStatus;
+    /**
+     * Optional error message describing why this connection is in a failed state.
+     * @see {@link ContainerProviderConnection.error}
+     */
+    error?: string;
   }
 
   export interface VmProviderConnection {
@@ -535,6 +547,11 @@ declare module '@podman-desktop/api' {
     shellAccess?: ProviderConnectionShellAccess;
     lifecycle?: ProviderConnectionLifecycle;
     status(): ProviderConnectionStatus;
+    /**
+     * Optional error message describing why this connection is in a failed state.
+     * @see {@link ContainerProviderConnection.error}
+     */
+    error?: string;
   }
 
   export type ProviderConnection = ContainerProviderConnection | KubernetesProviderConnection | VmProviderConnection;
@@ -807,18 +824,21 @@ declare module '@podman-desktop/api' {
     providerId: string;
     connection: ContainerProviderConnection;
     status: ProviderConnectionStatus;
+    error?: string;
   }
 
   export interface UpdateKubernetesConnectionEvent {
     providerId: string;
     connection: KubernetesProviderConnection;
     status: ProviderConnectionStatus;
+    error?: string;
   }
 
   export interface UpdateVmConnectionEvent {
     providerId: string;
     connection: VmProviderConnection;
     status: ProviderConnectionStatus;
+    error?: string;
   }
 
   export interface UnregisterContainerConnectionEvent {
@@ -2225,6 +2245,16 @@ declare module '@podman-desktop/api' {
      * @return A promise that resolves to the selected item or `undefined` when being dismissed.
      */
     export function showErrorMessage(message: string, ...items: string[]): Promise<string | undefined>;
+
+    /**
+     * Show a danger message. Optionally provide an array of items which will be presented as
+     * clickable buttons.
+     *
+     * @param message The message to show.
+     * @param items A set of items that will be rendered as actions in the message.
+     * @return A promise that resolves to the selected item or `undefined` when being dismissed.
+     */
+    export function showDangerMessage(message: string, ...items: string[]): Promise<string | undefined>;
 
     /**
      * Show progress in Podman Desktop. Progress is shown while running the given callback
@@ -3789,6 +3819,13 @@ declare module '@podman-desktop/api' {
      * Do not use the cache when building the image.
      */
     nocache?: boolean;
+
+    /**
+     * Default: true
+     *
+     * Validate existing registries before building.
+     */
+    validateRegistries?: boolean;
   }
 
   export interface ListImagesOptions {
@@ -4503,6 +4540,12 @@ declare module '@podman-desktop/api' {
      * The system clipboard.
      */
     export const clipboard: Clipboard;
+
+    /**
+     * The custom URL protocol scheme registered by the application (e.g., 'podman-desktop').
+     * This is the protocol used for deep linking into the application.
+     */
+    export const urlProtocol: string;
   }
 
   /**
@@ -4538,6 +4581,13 @@ declare module '@podman-desktop/api' {
      * The encoding to use. Default utf8
      */
     encoding?: BufferEncoding;
+
+    /**
+     * If true, the child process will be detached from the parent and its stdio
+     * will be disconnected. The process will continue running independently even
+     * if Podman Desktop exits. Stdout/stderr will not be captured.
+     */
+    detached?: boolean;
   }
 
   /**

@@ -21,8 +21,8 @@ import * as path from 'node:path';
 
 import { Octokit } from '@octokit/rest';
 import type { AuditRequestItems, CancellationToken, CliTool, Logger } from '@podman-desktop/api';
-import { window } from '@podman-desktop/api';
 import * as extensionApi from '@podman-desktop/api';
+import { window } from '@podman-desktop/api';
 
 import { connectionAuditor, createCluster } from './create-cluster';
 import type { ImageInfo } from './image-handler';
@@ -357,6 +357,10 @@ export async function createProvider(
 
   provider = extensionApi.provider.createProvider(providerOptions);
 
+  if (kindCli?.version) {
+    provider.updateVersion(kindCli.version);
+  }
+
   extensionContext.subscriptions.push(provider);
   await registerProvider(provider, telemetryLogger);
   extensionContext.subscriptions.push(
@@ -370,7 +374,7 @@ export async function createProvider(
     }),
   );
 
-  if (latestAsset && latestAsset.tag.slice(1) !== kindCli?.version && providerUpdate) {
+  if (kindPath && latestAsset && latestAsset.tag.slice(1) !== kindCli?.version && providerUpdate) {
     currentUpdateDisposable = provider.registerUpdate(providerUpdate);
   }
 
@@ -605,6 +609,7 @@ async function registerCliTool(
         installationSource: 'extension',
       });
       kindPath = cliPath;
+      provider.updateVersion(releaseVersionToInstall);
       if (releaseVersionToInstall === latestVersion) {
         delete update.version;
       } else {
@@ -629,6 +634,7 @@ async function registerCliTool(
       // update the version and path to undefined
       kindPath = undefined;
 
+      provider.updateVersion('');
       currentUpdateDisposable?.dispose();
     },
   });

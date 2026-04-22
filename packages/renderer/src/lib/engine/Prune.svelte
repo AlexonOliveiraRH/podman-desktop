@@ -34,11 +34,12 @@ async function openPruneDialog(): Promise<void> {
     buttons.push(LABEL_IMAGE_UNUSED);
     buttons.push(LABEL_IMAGE_UNTAGGED);
   } else {
-    buttons.push('Yes');
+    buttons.push('Delete');
   }
 
   const result = await window.showMessageBox({
     title: 'Prune',
+    type: 'danger',
     message: message,
     buttons,
   });
@@ -95,4 +96,4 @@ async function prune(type: string, selectedItemLabel: string): Promise<void> {
 }
 </script>
 
-<Button on:click={openPruneDialog} title="Remove unused {type}" icon={faTrash}>Prune</Button>
+<Button type="secondary" on:click={openPruneDialog} title="Remove unused {type}" icon={faTrash}>Prune</Button>

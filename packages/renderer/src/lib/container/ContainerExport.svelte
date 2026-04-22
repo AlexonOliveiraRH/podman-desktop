@@ -22,7 +22,7 @@ let outputTarget = '';
 let outputUri: Uri;
 let exportedError = '';
 let inProgress = false;
-let invalidFields = false;
+let invalidFields: boolean;
 $: invalidFields = invalidName || invalidFolder;
 
 onMount(() => {
@@ -108,7 +108,7 @@ async function exportContainer(): Promise<void> {
               <Button
                 on:click={selectFolderPath}
                 title="Open dialog to select the output file"
-                aria-label="Select output file">Browse ...</Button>
+                aria-label="Select output file">Browse...</Button>
             </div>
             <Button
               on:click={exportContainer}

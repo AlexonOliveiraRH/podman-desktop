@@ -35,6 +35,10 @@ const kubernetesConnection: ProviderKubernetesConnectionInfo = {
     apiURL: 'url',
   },
   status: 'started',
+  canStart: false,
+  canStop: false,
+  canEdit: false,
+  canDelete: false,
 };
 
 test('Expect that name, url and kubernetes are displayed', async () => {
@@ -48,4 +52,20 @@ test('Expect that name, url and kubernetes are displayed', async () => {
   const kubernetes = screen.getByLabelText('kubernetes');
   expect(kubernetes).toBeInTheDocument();
   expect(kubernetes.textContent).toBe('Kubernetes');
+});
+
+test('Expect error is displayed when connection has error', async () => {
+  render(PreferencesKubernetesConnectionDetailsSummary, {
+    kubernetesConnectionInfo: { ...kubernetesConnection, error: 'Failed to start cluster' },
+  });
+  const errorAlert = screen.getByRole('alert');
+  expect(errorAlert).toBeInTheDocument();
+  expect(errorAlert).toHaveTextContent('Failed to start cluster');
+});
+
+test('Expect error is not displayed when connection has no error', async () => {
+  render(PreferencesKubernetesConnectionDetailsSummary, {
+    kubernetesConnectionInfo: kubernetesConnection,
+  });
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

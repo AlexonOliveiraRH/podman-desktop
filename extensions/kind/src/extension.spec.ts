@@ -28,7 +28,7 @@ import type { KindGithubReleaseArtifactMetadata } from './kind-installer';
 import { KindInstaller } from './kind-installer';
 import * as util from './util';
 
-vi.mock('node:fs');
+vi.mock(import('node:fs'));
 vi.mock(import('./util'));
 vi.mock(import('./image-handler'));
 vi.mock(import('./create-cluster'));
@@ -137,6 +137,24 @@ describe('cli tool', () => {
       markdownDescription: expect.any(String),
       installationSource: 'extension',
     });
+  });
+
+  test('syncs detected version to provider on startup', async () => {
+    await activate();
+
+    expect(PROVIDER_MOCK.updateVersion).toHaveBeenCalledWith('0.0.1');
+  });
+
+  test('does not sync version to provider when no binary is detected', async () => {
+    vi.mocked(util.getKindBinaryInfo).mockRejectedValue(new Error('does not exist'));
+    vi.mocked(podmanDesktopApi.cli.createCliTool).mockReturnValue({
+      ...CLI_TOOL_MOCK,
+      version: undefined,
+    } as unknown as extensionApi.CliTool);
+
+    await activate();
+
+    expect(PROVIDER_MOCK.updateVersion).not.toHaveBeenCalled();
   });
 
   test('activation should register cli tool when available, installed by user', async () => {
@@ -316,6 +334,14 @@ describe('cli#update', () => {
 
     expect(disposeMock).toHaveBeenCalled();
   });
+
+  test('uninstall should clear the provider version', async () => {
+    vi.mocked(KindInstaller.prototype.getLatestVersionAsset).mockResolvedValue(mockV1Release);
+
+    await (await getCliToolInstaller()).doUninstall({} as unknown as extensionApi.Logger);
+
+    expect(PROVIDER_MOCK.updateVersion).toHaveBeenCalledWith('');
+  });
 });
 
 /**
@@ -395,6 +421,7 @@ describe('cli#install', () => {
       path: 'path',
       version: '1.0.2',
     });
+    expect(PROVIDER_MOCK.updateVersion).toHaveBeenCalledWith('1.0.2');
   });
 
   test('if installing system wide fails, it should not throw', async () => {
@@ -599,6 +626,15 @@ describe('provider#update', () => {
     } as unknown as KindGithubReleaseArtifactMetadata);
     await activate();
     expect(PROVIDER_MOCK.registerUpdate).toHaveBeenCalled();
+  });
+
+  test('Register update in provider is not called if CLI is not installed', async () => {
+    vi.mocked(util.getKindBinaryInfo).mockRejectedValue(new Error('not found'));
+    vi.mocked(KindInstaller.prototype.getLatestVersionAsset).mockResolvedValue({
+      tag: 'v1.5.6',
+    } as unknown as KindGithubReleaseArtifactMetadata);
+    await activate();
+    expect(PROVIDER_MOCK.registerUpdate).not.toHaveBeenCalled();
   });
 
   test('Register update in provider is not called if there is no update available', async () => {

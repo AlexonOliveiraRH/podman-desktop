@@ -19,6 +19,7 @@
 import type { ApiSenderType } from '@podman-desktop/core-api/api-sender';
 import { AppearanceSettings } from '@podman-desktop/core-api/appearance';
 import type { IConfigurationChangeEvent } from '@podman-desktop/core-api/configuration';
+import type Electron from 'electron';
 import { nativeTheme } from 'electron';
 import { beforeAll, expect, test, vi } from 'vitest';
 
@@ -30,10 +31,10 @@ import type { LockedConfiguration } from './locked-configuration.js';
 
 let configurationRegistry: ConfigurationRegistry;
 
-vi.mock('electron', () => {
+vi.mock(import('electron'), () => {
   return {
     nativeTheme: {},
-  };
+  } as unknown as typeof Electron;
 });
 
 const apiSender: ApiSenderType = {
@@ -163,6 +164,20 @@ test('Expect native theme to be set to system', async () => {
   appearanceInit.updateNativeTheme('system');
 
   expect(nativeTheme.themeSource).toEqual('system');
+});
+
+test('Expect native theme to be set to light for hc-light', async () => {
+  const appearanceInit: AppearanceInit = new AppearanceInit(configurationRegistry, apiSender);
+  appearanceInit.updateNativeTheme('hc-light');
+
+  expect(nativeTheme.themeSource).toEqual('light');
+});
+
+test('Expect native theme to be set to dark for hc-dark', async () => {
+  const appearanceInit: AppearanceInit = new AppearanceInit(configurationRegistry, apiSender);
+  appearanceInit.updateNativeTheme('hc-dark');
+
+  expect(nativeTheme.themeSource).toEqual('dark');
 });
 
 test('Expect unknown theme to be set to system', async () => {

@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2024 Red Hat, Inc.
+ * Copyright (C) 2024-2026 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,39 +19,79 @@
 import * as fs from 'node:fs';
 
 import type { LogType } from '@podman-desktop/core-api';
-import { beforeEach, expect, test, vi } from 'vitest';
+import type AdmZip from 'adm-zip';
+import type { IpcMain } from 'electron';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import type { DialogRegistry } from '/@/plugin/dialog-registry.js';
+import { Uri } from '/@/plugin/types/uri.js';
+import product from '/@product.json' with { type: 'json' };
 
 import type { TroubleshootingFileMap } from './troubleshooting.js';
 import { Troubleshooting } from './troubleshooting.js';
 
+const DIALOG_REGISTRY_MOCK: DialogRegistry = {
+  saveDialog: vi.fn(),
+} as unknown as DialogRegistry;
+
 const writeZipMock = vi.fn();
 const addFileMock = vi.fn();
 
-vi.mock('electron', () => {
+vi.mock(import('node:fs'));
+vi.mock(import('electron'), () => {
   return {
     ipcMain: {
       emit: vi.fn(),
       on: vi.fn(),
-    },
+    } as unknown as IpcMain,
   };
 });
 
-vi.mock('adm-zip', () => {
+vi.mock(import('adm-zip'), () => {
   return {
     default: class {
       addFile = addFileMock;
       writeZip = writeZipMock;
-    },
+    } as unknown as typeof AdmZip,
   };
 });
 
+vi.mock(import('/@product.json'));
+
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.mocked(product).name = 'Test Id';
+  vi.mocked(product).artifactName = 'test-id';
+});
+
+describe('saveLogs', () => {
+  test('should use DialogRegistry#saveDialog', async () => {
+    const output = Uri.file('foo.zip');
+    vi.mocked(DIALOG_REGISTRY_MOCK.saveDialog).mockResolvedValue(output);
+
+    const troubleshooting = new Troubleshooting(DIALOG_REGISTRY_MOCK);
+
+    await troubleshooting.saveLogs([]);
+
+    expect(DIALOG_REGISTRY_MOCK.saveDialog).toHaveBeenCalledExactlyOnceWith({
+      defaultUri: expect.any(Uri),
+      title: 'Save Logs as .zip',
+    });
+  });
+
+  test('should return empty array if user cancelled save dialog', async () => {
+    vi.mocked(DIALOG_REGISTRY_MOCK.saveDialog).mockResolvedValue(undefined);
+
+    const troubleshooting = new Troubleshooting(DIALOG_REGISTRY_MOCK);
+
+    const result = await troubleshooting.saveLogs([]);
+    expect(result).toHaveLength(0);
+  });
 });
 
 // Test the saveLogsToZip function
 test('Should save a zip file with the correct content', async () => {
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const fileMaps = [
     {
       filename: 'file1',
@@ -73,7 +113,7 @@ test('Should save a zip file with the correct content', async () => {
 
 // Do not expect writeZipMock to have been called if fileMaps is empty
 test('Should not save a zip file if fileMaps is empty', async () => {
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const fileMaps: TroubleshootingFileMap[] = [];
 
   const zipSpy = vi.spyOn(zipFile, 'saveLogsToZip');
@@ -86,7 +126,7 @@ test('Should not save a zip file if fileMaps is empty', async () => {
 
 // Expect the file name to have a .txt extension
 test('Should have a .txt extension in the file name', async () => {
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const fileMaps = [
     {
       filename: 'file1',
@@ -109,7 +149,7 @@ test('Should have a .txt extension in the file name', async () => {
 
 // Expect getConsoleLogs to correctly format the console logs passed in
 test('Should correctly format console logs', async () => {
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const consoleLogs = [
     {
       logType: 'log' as LogType,
@@ -143,12 +183,11 @@ test('Should return getMacSystemLogs if the platform is darwin', async () => {
   readFileMock.mockResolvedValue('content');
 
   // Mock exists to be true
-  vi.mock('node:fs');
   vi.spyOn(fs, 'existsSync').mockImplementation(() => {
     return true;
   });
 
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const getSystemLogsSpy = vi.spyOn(zipFile, 'getSystemLogs');
 
   await zipFile.getSystemLogs();
@@ -158,21 +197,14 @@ test('Should return getMacSystemLogs if the platform is darwin', async () => {
   expect(readFileMock).toHaveBeenCalledTimes(2);
 
   // Expect readFileMock to have been called with /Library/Logs/Podman Desktop/launchd-stdout.log but CONTAINED in the path
-  expect(readFileMock).toHaveBeenCalledWith(
-    expect.stringContaining('/Library/Logs/Podman Desktop/launchd-stdout'),
-    'utf-8',
-  );
-  expect(readFileMock).toHaveBeenCalledWith(
-    expect.stringContaining('/Library/Logs/Podman Desktop/launchd-stderr'),
-    'utf-8',
-  );
+  expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining('/Library/Logs/Test Id/launchd-stdout'), 'utf-8');
+  expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining('/Library/Logs/Test Id/launchd-stderr'), 'utf-8');
 });
 
 // Should return getWindowsSystemLogs if the platform is win32
 // ~/AppData/Roaming/Podman Desktop/logs/podman-desktop.log
 test('Should return getWindowsSystemLogs if the platform is win32', async () => {
   // Mock exists to be true
-  vi.mock('node:fs');
   vi.spyOn(fs, 'existsSync').mockImplementation(() => {
     return true;
   });
@@ -183,7 +215,7 @@ test('Should return getWindowsSystemLogs if the platform is win32', async () => 
   const readFileMock = vi.spyOn(fs.promises, 'readFile');
   readFileMock.mockResolvedValue('content');
 
-  const zipFile = new Troubleshooting();
+  const zipFile = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const getSystemLogsSpy = vi.spyOn(zipFile, 'getSystemLogs');
 
   await zipFile.getSystemLogs();
@@ -193,10 +225,7 @@ test('Should return getWindowsSystemLogs if the platform is win32', async () => 
   expect(readFileMock).toHaveBeenCalledTimes(1);
 
   // Expect readFileMock to have been called with ~/AppData/Roaming/Podman Desktop/logs/podman-desktop.log but CONTAINED in the path
-  expect(readFileMock).toHaveBeenCalledWith(
-    expect.stringContaining('/AppData/Roaming/Podman Desktop/logs/podman-desktop'),
-    'utf-8',
-  );
+  expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining('/AppData/Roaming/Test Id/logs/test-id'), 'utf-8');
 });
 
 // test generateLogFileName for different cases
@@ -206,7 +235,7 @@ test.each([
   { file: 'test.log', extension: undefined, expected: /test-\d{14}\.log/ }, // use extension from filename
   { file: 'test.log', extension: 'customExtension', expected: /test-\d{14}\.customExtension/ }, //use provided extension
 ])('test generateLogFileName, file: $file, extension: $extension', async ({ file, extension, expected }) => {
-  const ts = new Troubleshooting();
+  const ts = new Troubleshooting(DIALOG_REGISTRY_MOCK);
   const filename = ts.generateLogFileName(file, extension);
   // Check the format of "name"-"date(14digits)"-"extension"
   expect(filename).toMatch(new RegExp(expected));

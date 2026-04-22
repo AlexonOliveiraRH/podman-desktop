@@ -32,10 +32,10 @@ import * as health from '/@/stores/kubernetes-context-health';
 import * as kubeContextStore from '/@/stores/kubernetes-contexts';
 import * as states from '/@/stores/kubernetes-contexts-state';
 
-vi.mock('/@/stores/kubernetes-contexts-state');
-vi.mock('/@/stores/kubernetes-contexts');
-vi.mock('/@/lib/kube/resources-listen');
-vi.mock('/@/stores/kubernetes-context-health');
+vi.mock(import('/@/stores/kubernetes-contexts-state'));
+vi.mock(import('/@/stores/kubernetes-contexts'));
+vi.mock(import('/@/lib/kube/resources-listen'));
+vi.mock(import('/@/stores/kubernetes-context-health'));
 
 let delayed: Writable<Map<string, boolean>>;
 let contexts: Writable<KubeContext[]>;
@@ -123,22 +123,18 @@ describe.each<{
     });
   });
 
-  test(
-    'expect badges to show as there is an offline context',
-    {
-      skip: !experimental,
-    },
-    async () => {
-      setState({ reachable: true, offline: true });
-      render(KubernetesCurrentContextConnectionBadge);
+  test('expect badges to show as there is an offline context', {
+    skip: !experimental,
+  }, async () => {
+    setState({ reachable: true, offline: true });
+    render(KubernetesCurrentContextConnectionBadge);
 
-      await vi.waitFor(() => {
-        const status = screen.getByRole('status');
-        expect(status).toBeInTheDocument();
-        expect(status).toHaveTextContent('Connection lost');
-      });
-    },
-  );
+    await vi.waitFor(() => {
+      const status = screen.getByRole('status');
+      expect(status).toBeInTheDocument();
+      expect(status).toHaveTextContent('Connection lost');
+    });
+  });
 
   test('expect badges to be green when reachable', async () => {
     setState({ reachable: true });
@@ -160,21 +156,17 @@ describe.each<{
     });
   });
 
-  test(
-    'expect badges to be orange when offline',
-    {
-      skip: !experimental,
-    },
-    async () => {
-      setState({ reachable: true, offline: true });
-      render(KubernetesCurrentContextConnectionBadge);
+  test('expect badges to be orange when offline', {
+    skip: !experimental,
+  }, async () => {
+    setState({ reachable: true, offline: true });
+    render(KubernetesCurrentContextConnectionBadge);
 
-      await vi.waitFor(() => {
-        const status = screen.getByRole('status');
-        expect(status.firstChild).toHaveClass('bg-[var(--pd-status-paused)]');
-      });
-    },
-  );
+    await vi.waitFor(() => {
+      const status = screen.getByRole('status');
+      expect(status.firstChild).toHaveClass('bg-[var(--pd-status-paused)]');
+    });
+  });
 
   test('expect no tooltip when no error', async () => {
     setState({ reachable: true });
@@ -210,29 +202,25 @@ describe.each<{
     });
   });
 
-  test(
-    'expect tooltip when offline',
-    {
-      skip: !experimental,
-    },
-    async () => {
-      setState({ reachable: true, offline: true });
-      render(KubernetesCurrentContextConnectionBadge);
+  test('expect tooltip when offline', {
+    skip: !experimental,
+  }, async () => {
+    setState({ reachable: true, offline: true });
+    render(KubernetesCurrentContextConnectionBadge);
 
-      await vi.waitFor(() => {
-        expect(screen.getByRole('status')).toBeInTheDocument();
-      });
+    await vi.waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
 
-      const tooltipTrigger = screen.getByTestId('tooltip-trigger');
-      await fireEvent.mouseEnter(tooltipTrigger);
+    const tooltipTrigger = screen.getByTestId('tooltip-trigger');
+    await fireEvent.mouseEnter(tooltipTrigger);
 
-      await vi.waitFor(() => {
-        const tooltip = screen.getByLabelText('tooltip');
-        expect(tooltip).toBeInTheDocument();
-        expect(tooltip).toHaveTextContent('connection lost, resources may be out of sync');
-      });
-    },
-  );
+    await vi.waitFor(() => {
+      const tooltip = screen.getByLabelText('tooltip');
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip).toHaveTextContent('connection lost, resources may be out of sync');
+    });
+  });
 
   test('spinner should be displayed when and only when the context connectivity is being checked', async () => {
     contexts.set([

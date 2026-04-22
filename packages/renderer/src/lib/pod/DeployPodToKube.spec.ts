@@ -34,13 +34,7 @@ import DeployPodToKube from './DeployPodToKube.svelte';
 vi.mock(import('/@/lib/editor/MonacoEditor.svelte'));
 
 // mock the router
-vi.mock('tinro', () => {
-  return {
-    router: {
-      goto: vi.fn(),
-    },
-  };
-});
+vi.mock(import('tinro'));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -567,7 +561,7 @@ test('ImagePullBackOff error should be reported', async () => {
     expect(window.telemetryTrack).toBeCalledWith('deployToKube', {
       errorMessage: 'ImagePullBackOff',
     });
-    expect(screen.getByLabelText('Deploy Error Message')).toHaveTextContent(
+    expect(screen.getByRole('alert')).toHaveTextContent(
       'ImagePullBackOff error, please check that the image is accessible from the Kubernetes cluster',
     );
   });

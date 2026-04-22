@@ -35,6 +35,7 @@ import redundantUndefined from 'eslint-plugin-redundant-undefined';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import fileProgress from 'eslint-plugin-file-progress';
 import vitest from '@vitest/eslint-plugin';
+import nodePlugin from 'eslint-plugin-n';
 import svelteConfig from './svelte.config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,6 +96,7 @@ export default [
     plugins: {
       // compliant v10 plug-ins
       unicorn,
+      n: nodePlugin,
       // non-compliant v10 plug-ins
       'file-progress': fixupPluginRules(fileProgress),
       etc: fixupPluginRules(etc),
@@ -148,6 +150,8 @@ export default [
     rules: {
       'vitest/no-import-node-test': 'error',
       'vitest/no-identical-title': 'error',
+      'vitest/prefer-import-in-mock': 'error',
+      'vitest/hoisted-apis-on-top': 'error',
       eqeqeq: 'error',
       'prefer-promise-reject-errors': 'error',
       semi: ['error', 'always'],
@@ -193,6 +197,14 @@ export default [
 
       // unicorn custom rules
       'unicorn/prefer-node-protocol': 'error',
+
+      // node custom rules
+      'n/no-sync': [
+        'warn',
+        {
+          ignores: ['existsSync'],
+        },
+      ],
 
       // sonarjs custom rules
       'sonarjs/cognitive-complexity': 'off',
@@ -248,6 +260,10 @@ export default [
       // simple-import-sort custom rules
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error',
+
+      // new rule that has been added as a recommended one in eslint v10
+      // but comment it by default until we can fix all the issues in the codebase
+      'preserve-caught-error': 'off',
     },
   },
 
@@ -289,6 +305,22 @@ export default [
             {
               group: ['@podman-desktop/ui-svelte*'],
               message: 'Please use relative imports as the code is part of @podman-desktop/ui',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/main/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../**'],
+              message: 'Parent relative imports are not allowed. Use path aliases (e.g. /@/) instead.',
             },
           ],
         },
@@ -370,6 +402,23 @@ export default [
       // The sonarjs/no-unused-collection rule has a bug when analyzing Svelte files with reactive statements ($webviews)
       // causing "Cannot read properties of null (reading 'type')" error during linting
       'sonarjs/no-unused-collection': 'off',
+    },
+  },
+
+  {
+    files: ['packages/api/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../**'],
+              message: 'Parent relative imports are not allowed. Use path aliases (e.g. /@/) instead.',
+            },
+          ],
+        },
+      ],
     },
   },
 ];

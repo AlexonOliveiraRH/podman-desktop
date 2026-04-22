@@ -60,7 +60,7 @@ export async function deleteContainer(page: Page, name: string): Promise<void> {
       // delete the container
       const deleteButton = container.getByRole('button').and(container.getByLabel('Delete Container'));
       await deleteButton.click();
-      await handleConfirmationDialog(page);
+      await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
       // wait for container to disappear
       try {
         console.log('Waiting for container to get deleted ...');
@@ -93,7 +93,7 @@ export async function deleteImage(page: Page, name: string): Promise<void> {
       const deleteButton = row.getByRole('button', { name: 'Delete Image' });
       if (await deleteButton.isEnabled()) {
         await deleteButton.click();
-        await handleConfirmationDialog(page);
+        await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
       } else {
         throw Error(`Cannot delete image ${name}, because it is in use`);
       }
@@ -149,7 +149,7 @@ export async function deletePod(page: Page, name: string, timeout = 50_000): Pro
       const deleteButton = pod.getByRole('button').and(pod.getByLabel('Delete Pod'));
       await deleteButton.click();
       // config delete dialog
-      await handleConfirmationDialog(page);
+      await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
       // wait for pod to disappear
       try {
         console.log('Waiting for pod to get deleted ...');
@@ -502,6 +502,44 @@ export async function runComposeUpFromCLI(composeFilePath: string): Promise<void
     } catch (error) {
       throw new Error(`Error running podman compose up from CLI: ${error}`);
     }
+  });
+}
+
+export async function removeAllImagesCLI(engine: 'podman' | 'docker' = 'podman', timeout = 120_000): Promise<void> {
+  return test.step(`Remove all ${engine} images via CLI`, () => {
+    if (process.env.CI !== 'true') {
+      console.log(`Skipping ${engine} image cleanup (CI is not set to true)`);
+      return;
+    }
+
+    try {
+      const command = engine === 'podman' ? 'podman rmi --all --force' : 'docker image prune --all --force';
+      // eslint-disable-next-line sonarjs/os-command
+      execSync(command, { timeout });
+      console.log(`All ${engine} images removed via CLI`);
+    } catch (error) {
+      console.log(
+        `No ${engine} images to remove or command not available:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+}
+
+export async function ensureNoImagesPresentCLI(page: Page): Promise<void> {
+  return test.step('Ensure no images are present', async () => {
+    if (process.env.CI !== 'true') {
+      console.log('Skipping image cleanup and validation (CI is not set to true)');
+      return;
+    }
+
+    await removeAllImagesCLI('podman');
+    await removeAllImagesCLI('docker');
+
+    const navigationBar = new NavigationBar(page);
+    const imagesPage = await navigationBar.openImages();
+    await playExpect(imagesPage.heading).toBeVisible();
+    await playExpect.poll(async () => await imagesPage.countRowsFromTable(), { timeout: 30_000 }).toBe(0);
   });
 }
 

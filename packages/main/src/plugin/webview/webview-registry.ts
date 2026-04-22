@@ -53,7 +53,7 @@ export class HttpServer {
     // now listen on the port
     await new Promise<void>((resolve, reject) => {
       this.#instance = this.#app
-        .listen(serverPort, () => {
+        .listen(serverPort, '127.0.0.1', () => {
           resolve();
         })
         .on('error', (err: unknown) => {
@@ -66,6 +66,8 @@ export class HttpServer {
     if (!this.#instance) {
       return;
     }
+    // Force-close all keep-alive connections so close() can complete
+    this.#instance.closeAllConnections();
     return new Promise<void>((resolve, reject) => {
       this.#instance?.close((err: unknown) => {
         if (err) {

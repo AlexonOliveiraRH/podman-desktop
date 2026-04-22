@@ -19,7 +19,7 @@
 import type { Configuration, ProxySettings } from '@podman-desktop/api';
 import type { ApiSenderType } from '@podman-desktop/core-api/api-sender';
 import { delay, http, HttpResponse } from 'msw';
-import { setupServer, type SetupServerApi } from 'msw/node';
+import { type SetupServer, setupServer } from 'msw/node';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import type { Certificates } from '/@/plugin/certificates.js';
@@ -46,7 +46,7 @@ const extensionApiVersion: ExtensionApiVersion = {
   getApiVersion: vi.fn(),
 } as ExtensionApiVersion;
 
-let server: SetupServerApi | undefined = undefined;
+let server: SetupServer | undefined = undefined;
 
 // unlisted field is not present (assuming it should be listed then)
 const fakePublishedExtension1 = {
@@ -163,6 +163,7 @@ const proxy: Proxy = {
 
 const configurationRegistry: ConfigurationRegistry = {
   getConfiguration: vi.fn(),
+  registerConfigurations: vi.fn(),
 } as unknown as ConfigurationRegistry;
 
 const originalConsoleError = console.error;
@@ -397,4 +398,30 @@ test('Should use proxy object if proxySettings is undefined', () => {
   expect(options.agent?.http?.proxy.href).toBe('http://localhost/');
   // @ts-expect-error proxy property exists on https object
   expect(options.agent?.https?.proxy.href).toBe('https://localhost/');
+});
+
+test('should register local extensions and catalog enabled configuration properties', () => {
+  extensionsCatalog.init();
+
+  expect(configurationRegistry.registerConfigurations).toHaveBeenCalledWith([
+    expect.objectContaining({
+      id: 'preferences.extensions',
+      title: 'Extensions',
+      type: 'object',
+      properties: expect.objectContaining({
+        'extensions.localExtensions.enabled': {
+          description: 'Show the local extensions tab.',
+          type: 'boolean',
+          default: true,
+          hidden: true,
+        },
+        'extensions.catalog.enabled': {
+          description: 'Show the extension catalog in the UI. When disabled, hides the catalog suggestions.',
+          type: 'boolean',
+          default: true,
+          hidden: true,
+        },
+      }),
+    }),
+  ]);
 });

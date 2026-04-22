@@ -88,6 +88,7 @@ import { TelemetryTrustedValue } from '/@/plugin/types/telemetry.js';
 import { Uri } from '/@/plugin/types/uri.js';
 import { Exec } from '/@/plugin/util/exec.js';
 import { getFreePort } from '/@/plugin/util/port.js';
+import { withTimeout } from '/@/plugin/util/timeout.js';
 import { ViewRegistry } from '/@/plugin/view-registry.js';
 import { WebviewRegistry } from '/@/plugin/webview/webview-registry.js';
 import { securityRestrictionCurrentHandler } from '/@/security-restrictions-handler.js';
@@ -236,6 +237,9 @@ export class ExtensionLoader implements IAsyncDisposable {
   async asyncDispose(): Promise<void> {
     await this.stopAllExtensions();
 
+    // stop the webview HTTP server
+    await this.webviewRegistry.stop();
+
     // clear maps
     this.activatedExtensions.clear();
     this.analyzedExtensions.clear();
@@ -326,7 +330,7 @@ export class ExtensionLoader implements IAsyncDisposable {
     });
     if (!extension.error) {
       await this.loadExtension(extension);
-      this.apiSender.send('extension-started', {});
+      this.apiSender.send('extension-started');
       this._onDidChange.fire();
     }
   }
@@ -388,10 +392,25 @@ export class ExtensionLoader implements IAsyncDisposable {
       },
     };
 
+    const allowCustomExtensions: IConfigurationNode = {
+      id: 'preferences.extensions',
+      title: 'Extensions',
+      type: 'object',
+      properties: {
+        ['extensions.customExtensions.enabled']: {
+          description: 'When disabled, the `Install custom...` button on the Extensions page will not appear.',
+          type: 'boolean',
+          default: true,
+          hidden: true,
+        },
+      },
+    };
+
     this.configurationRegistry.registerConfigurations([
       maxActivationTimeConfiguration,
       disabledExtensionConfiguration,
       developmentModeExtensionConfiguration,
+      allowCustomExtensions,
     ]);
   }
 
@@ -783,11 +802,14 @@ export class ExtensionLoader implements IAsyncDisposable {
     const extensionConfiguration = extension.manifest?.contributes?.configuration;
     if (extensionConfiguration) {
       // add information about the current extension
-      extensionConfiguration.extension = extension;
-      extensionConfiguration.title = `Extension: ${extensionConfiguration.title}`;
-      extensionConfiguration.id = 'preferences.' + extension.id;
-
-      this.configurationRegistry.registerConfigurations([extensionConfiguration]);
+      this.configurationRegistry.registerConfigurations([
+        {
+          ...extensionConfiguration,
+          id: 'preferences.' + extension.id,
+          extension,
+          title: `Extension: ${extensionConfiguration.title}`,
+        },
+      ]);
     }
 
     const extensionCommands = extension.manifest?.contributes?.commands;
@@ -1072,6 +1094,9 @@ export class ExtensionLoader implements IAsyncDisposable {
       },
       showErrorMessage: (message: string, ...items: string[]) => {
         return messageBox.showDialog('error', extManifest.displayName, message, items);
+      },
+      showDangerMessage: (message: string, ...items: string[]) => {
+        return messageBox.showDialog('danger', extManifest.displayName, message, items);
       },
 
       showInputBox: (options?: containerDesktopAPI.InputBoxOptions, token?: containerDesktopAPI.CancellationToken) => {
@@ -1479,6 +1504,9 @@ export class ExtensionLoader implements IAsyncDisposable {
           },
         };
       },
+      get urlProtocol() {
+        return product.urlProtocol;
+      },
     };
 
     const process: typeof containerDesktopAPI.process = {
@@ -1730,7 +1758,7 @@ export class ExtensionLoader implements IAsyncDisposable {
   async activateExtension(extension: AnalyzedExtension, extensionMain: any | undefined): Promise<void> {
     this.extensionState.set(extension.id, 'starting');
     this.extensionStateErrors.delete(extension.id);
-    this.apiSender.send('extension-starting', {});
+    this.apiSender.send('extension-starting');
 
     const subscriptions: containerDesktopAPI.Disposable[] = extension.subscriptions;
 
@@ -1770,14 +1798,6 @@ export class ExtensionLoader implements IAsyncDisposable {
           .get(ExtensionLoaderSettings.MaxActivationTime, DEFAULT_TIMEOUT);
         const delayInMilliseconds = delayInSeconds * 1000;
 
-        // reject a promise after this delay
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Extension ${extension.id} activation timed out after ${delayInSeconds} seconds`)),
-            delayInMilliseconds,
-          ),
-        );
-
         // it returns exports
         console.log(`Activating extension (${extension.id}) with max activation time of ${delayInSeconds} seconds`);
 
@@ -1785,7 +1805,7 @@ export class ExtensionLoader implements IAsyncDisposable {
         const activatePromise = extensionMain['activate'].apply(undefined, [extensionContext]);
 
         // if extension reach the timeout, do not wait for it to finish and flag as error
-        exports = await Promise.race([activatePromise, timeoutPromise]);
+        exports = await withTimeout(activatePromise, delayInMilliseconds, `Extension ${extension.id} activation`);
         const afterActivateTime = performance.now();
 
         // Computing activation duration

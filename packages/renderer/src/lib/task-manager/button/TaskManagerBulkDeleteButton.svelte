@@ -29,8 +29,8 @@ async function deleteSelectedTasks(): Promise<void> {
 }
 
 function onClick(): void {
-  withBulkConfirmation(deleteSelectedTasks, bulkOperationTitle);
+  withBulkConfirmation(deleteSelectedTasks, bulkOperationTitle, { variant: 'delete' });
 }
 </script>
 
-<Button title={title} on:click={onClick} inProgress={bulkDeleteInProgress} icon={faTrash} />
+<Button title={title} aria-label={title} on:click={onClick} inProgress={bulkDeleteInProgress} icon={faTrash} />

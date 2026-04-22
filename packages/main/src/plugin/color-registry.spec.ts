@@ -26,9 +26,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Emitter } from '/@/plugin/events/emitter.js';
 import type { AnalyzedExtension } from '/@/plugin/extension/extension-analyzer.js';
 import { Disposable } from '/@/plugin/types/disposable.js';
+import * as util from '/@/util.js';
 
+// eslint-disable-next-line no-restricted-imports
 import tailwindColorPalette from '../../../../tailwind-color-palette.json' with { type: 'json' };
-import * as util from '../util.js';
 import { ColorBuilder } from './color-builder.js';
 import { colorPaletteHelper } from './color-palette-helper.js';
 import { type ColorDefinitionWithId, ColorRegistry } from './color-registry.js';
@@ -88,6 +89,22 @@ class TestColorRegistry extends ColorRegistry {
 
   override initCommon(): void {
     super.initCommon();
+  }
+
+  override initDefaults(): void {
+    super.initDefaults();
+  }
+
+  override initStatusColors(): void {
+    super.initStatusColors();
+  }
+
+  override initButton(): void {
+    super.initButton();
+  }
+
+  override initProviderInfo(): void {
+    super.initProviderInfo();
   }
 }
 
@@ -196,9 +213,11 @@ test('init', async () => {
 });
 
 test('initColors', async () => {
-  // mock the registerColor
+  // spy on registerColor but let it actually register colors
   const spyOnRegisterColor = vi.spyOn(colorRegistry, 'registerColor');
-  spyOnRegisterColor.mockReturnValue(undefined);
+  // Don't mock it - let it call through to the real implementation
+
+  const spyOnInitProviderInfo = vi.spyOn(colorRegistry, 'initProviderInfo');
 
   colorRegistry.initColors();
 
@@ -206,6 +225,8 @@ test('initColors', async () => {
 
   // at least > 20 times
   expect(spyOnRegisterColor.mock.calls.length).toBeGreaterThan(20);
+
+  expect(spyOnInitProviderInfo).toHaveBeenCalledOnce();
 });
 
 describe('initTitlebar', () => {
@@ -284,8 +305,22 @@ test('initContent', async () => {
 
   // check the first call
   expect(spyOnRegisterColor.mock.calls[0]?.[0]).toStrictEqual('content-breadcrumb');
-  expect(spyOnRegisterColor.mock.calls[0]?.[1].light).toBe(tailwindColorPalette.purple[900]);
-  expect(spyOnRegisterColor.mock.calls[0]?.[1].dark).toBe(tailwindColorPalette.gray[400]);
+  expect(spyOnRegisterColor.mock.calls[0]?.[1].light).toBe(tailwindColorPalette.accent1[500]);
+  expect(spyOnRegisterColor.mock.calls[0]?.[1].dark).toBe(tailwindColorPalette.accent1[400]);
+});
+
+test('initDropdown registers dropdown-border', async () => {
+  colorRegistry.initColors();
+
+  const colorsLight = colorRegistry.listColors('light');
+  const dropdownBorderLight = colorsLight.find(c => c.id === 'dropdown-border');
+  expect(dropdownBorderLight).toBeDefined();
+  expect(dropdownBorderLight?.value).toBe(tailwindColorPalette.accent1[500]);
+
+  const colorsDark = colorRegistry.listColors('dark');
+  const dropdownBorderDark = colorsDark.find(c => c.id === 'dropdown-border');
+  expect(dropdownBorderDark).toBeDefined();
+  expect(dropdownBorderDark?.value).toBe('transparent');
 });
 
 describe('registerColor', () => {
@@ -325,6 +360,45 @@ describe('registerColor', () => {
     expect(() => colorRegistry.registerColor('dummyColor', { light: 'lightColor2', dark: 'darkColor2' })).toThrowError(
       'Color dummyColor already registered',
     );
+  });
+
+  test('registerColor without HC values falls back to base colors in HC themes', async () => {
+    // spy notifyUpdate
+    const spyOnNotifyUpdate = vi.spyOn(colorRegistry, 'notifyUpdate');
+    spyOnNotifyUpdate.mockReturnValue(undefined);
+
+    // register the color
+    colorRegistry.registerColor('hc-fallback-color', { light: 'lightColor', dark: 'darkColor' });
+
+    // should fall back to base color
+    const lightHcColors = colorRegistry.listColors('hc-light');
+    expect(lightHcColors[0]?.value).toBe('lightColor');
+
+    // should fall back to base color
+    const darkHcColors = colorRegistry.listColors('hc-dark');
+    expect(darkHcColors[0]?.value).toBe('darkColor');
+  });
+
+  test('registerColor with HC values uses overrides in HC themes', async () => {
+    // spy notifyUpdate
+    const spyOnNotifyUpdate = vi.spyOn(colorRegistry, 'notifyUpdate');
+    spyOnNotifyUpdate.mockReturnValue(undefined);
+
+    // register the color
+    colorRegistry.registerColor('hc-override-color', {
+      light: 'lightColor',
+      dark: 'darkColor',
+      hcLight: 'hcLightColor',
+      hcDark: 'hcDarkColor',
+    });
+
+    // should override color
+    const hcLightColors = colorRegistry.listColors('hc-light');
+    expect(hcLightColors[0]?.value).toBe('hcLightColor');
+
+    // should override color
+    const hcDarkColors = colorRegistry.listColors('hc-dark');
+    expect(hcDarkColors[0]?.value).toBe('hcDarkColor');
   });
 });
 
@@ -380,6 +454,16 @@ describe('isDarkTheme', () => {
 
   test('dark', async () => {
     const isDark = colorRegistry.isDarkTheme('dark');
+    expect(isDark).toBeTruthy();
+  });
+
+  test('hc-light is not dark (inherits from light)', async () => {
+    const isDark = colorRegistry.isDarkTheme('hc-light');
+    expect(isDark).toBeFalsy();
+  });
+
+  test('hc-dark is dark (inherits from dark)', async () => {
+    const isDark = colorRegistry.isDarkTheme('hc-dark');
     expect(isDark).toBeTruthy();
   });
 
@@ -450,7 +534,7 @@ describe('registerExtensionThemes', () => {
     // now check for a color not defined in 'light-theme1'
     const titlebarTextColorLight = colorsLight.find(c => c.id === 'titlebar-text');
     expect(titlebarTextColorLight).toBeDefined();
-    expect(titlebarTextColorLight?.value).toBe('#37255d');
+    expect(titlebarTextColorLight?.value).toBe(tailwindColorPalette.accent1[500]);
   });
 
   test('check dispose on Windows', async () => {
@@ -612,12 +696,12 @@ describe('initLabel', () => {
 
     // check the first call
     expect(spyOnRegisterColor.mock.calls[2]?.[0]).toStrictEqual('label-primary-bg');
-    expect(spyOnRegisterColor.mock.calls[2]?.[1].light).toBe(tailwindColorPalette.purple[300]);
-    expect(spyOnRegisterColor.mock.calls[2]?.[1].dark).toBe(tailwindColorPalette.purple[700]);
+    expect(spyOnRegisterColor.mock.calls[2]?.[1].light).toBe(tailwindColorPalette.accent1[200]);
+    expect(spyOnRegisterColor.mock.calls[2]?.[1].dark).toBe(tailwindColorPalette.accent1[900]);
 
     expect(spyOnRegisterColor.mock.calls[3]?.[0]).toStrictEqual('label-primary-text');
-    expect(spyOnRegisterColor.mock.calls[3]?.[1].light).toBe(tailwindColorPalette.purple[700]);
-    expect(spyOnRegisterColor.mock.calls[3]?.[1].dark).toBe(tailwindColorPalette.purple[300]);
+    expect(spyOnRegisterColor.mock.calls[3]?.[1].light).toBe(tailwindColorPalette.accent1[800]);
+    expect(spyOnRegisterColor.mock.calls[3]?.[1].dark).toBe(tailwindColorPalette.accent1[200]);
   });
 
   test('secondary color', () => {
@@ -727,6 +811,8 @@ describe('initTooltip', () => {
     expect(spyOnRegisterColor).toHaveBeenCalledWith('tooltip-text', {
       light: tailwindColorPalette.stone[900],
       dark: tailwindColorPalette.white,
+      hcLight: tailwindColorPalette.black,
+      hcDark: tailwindColorPalette.white,
     });
   });
 
@@ -737,6 +823,8 @@ describe('initTooltip', () => {
     expect(spyOnRegisterColor).toHaveBeenCalledWith('tooltip-border', {
       light: tailwindColorPalette.gray[500],
       dark: tailwindColorPalette.charcoal[500],
+      hcDark: tailwindColorPalette.white,
+      hcLight: tailwindColorPalette.black,
     });
   });
 
@@ -825,6 +913,378 @@ describe('initCommon', () => {
   });
 });
 
+describe('initDefaults', () => {
+  let spyOnRegisterColor: MockInstance<(colorId: string, definition: ColorDefinition) => void>;
+  let spyOnRegisterColorDefinition: MockInstance<(definition: ColorDefinitionWithId) => void>;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+
+    spyOnRegisterColor = vi.spyOn(colorRegistry, 'registerColor');
+    spyOnRegisterColor.mockReturnValue(undefined);
+    spyOnRegisterColorDefinition = vi.spyOn(colorRegistry, 'registerColorDefinition');
+    spyOnRegisterColorDefinition.mockReturnValue(undefined);
+
+    colorRegistry.initDefaults();
+  });
+
+  test('registers default-text-link color', () => {
+    expect(spyOnRegisterColor).toHaveBeenCalledWith('default-text-link', {
+      dark: tailwindColorPalette.accent1[400],
+      light: tailwindColorPalette.accent1[700],
+      hcDark: tailwindColorPalette.accent1[300],
+      hcLight: tailwindColorPalette.accent1[950],
+    });
+  });
+
+  test('registers default-item-hover color using registerColorDefinition', () => {
+    const itemHoverCall = spyOnRegisterColorDefinition.mock.calls.find(call => call?.[0]?.id === 'default-item-hover');
+    expect(itemHoverCall).toBeDefined();
+
+    const definition = itemHoverCall?.[0];
+    expect(definition?.id).toBe('default-item-hover');
+    expect(definition?.dark).toBeDefined();
+    expect(definition?.light).toBeDefined();
+    expect(definition?.hcDark).toBeDefined();
+    expect(definition?.hcLight).toBeDefined();
+
+    // verify both colors are strings (formatted CSS)
+    expect(typeof definition?.dark).toBe('string');
+    expect(typeof definition?.light).toBe('string');
+
+    // verify the colors contain alpha information (0.1)
+    expect(definition?.dark).toContain('0.1');
+    expect(definition?.light).toContain('0.1');
+    expect(definition?.hcDark).toContain('0.3');
+    expect(definition?.hcLight).toContain('0.4');
+  });
+});
+
+describe('initButton', () => {
+  beforeEach(() => {
+    // initButton requires item-disabled, default-text-link and default-item-hover
+    // to be registered first, so we must call initCommon and initDefaults
+    colorRegistry.initCommon();
+    colorRegistry.initDefaults();
+  });
+
+  test('throws when prerequisite colors are missing', () => {
+    // fresh registry without initCommon/initDefaults
+    const freshRegistry = new TestColorRegistry(apiSender, configurationRegistry);
+    expect(() => freshRegistry.initButton()).toThrow(
+      'item-disabled, default-text-link and default-item-hover colors must be defined before button colors',
+    );
+  });
+
+  test('registers primary-bg with correct values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const lightColor = lightColors.find(c => c.id === 'button-primary-bg');
+    const darkColor = darkColors.find(c => c.id === 'button-primary-bg');
+
+    expect(lightColor?.value).toBe(tailwindColorPalette.accent1[500]);
+    expect(darkColor?.value).toBe(tailwindColorPalette.accent1[500]);
+  });
+
+  test('registers primary-hover-bg with accent1[400]', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(lightColors.find(c => c.id === 'button-primary-hover-bg')?.value).toBe(tailwindColorPalette.accent1[400]);
+    expect(darkColors.find(c => c.id === 'button-primary-hover-bg')?.value).toBe(tailwindColorPalette.accent1[400]);
+  });
+
+  test('registers primary-border with alpha transparency', () => {
+    const spyOnRegisterColorDefinition = vi.spyOn(colorRegistry, 'registerColorDefinition');
+
+    colorRegistry.initButton();
+
+    const primaryBorderCall = spyOnRegisterColorDefinition.mock.calls.find(
+      call => call?.[0]?.id === 'button-primary-border',
+    );
+    expect(primaryBorderCall).toBeDefined();
+
+    const definition = primaryBorderCall?.[0];
+    expect(definition?.dark).toContain('0.4');
+    expect(definition?.light).toBe('transparent');
+  });
+
+  test('registers primary-text as white for all themes', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(lightColors.find(c => c.id === 'button-primary-text')?.value).toBe(tailwindColorPalette.white);
+    expect(darkColors.find(c => c.id === 'button-primary-text')?.value).toBe(tailwindColorPalette.white);
+  });
+
+  test('registers secondary-bg with stone/accent1 values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-secondary-bg')?.value).toBe(tailwindColorPalette.stone[700]);
+    expect(lightColors.find(c => c.id === 'button-secondary-bg')?.value).toBe(tailwindColorPalette.accent1[100]);
+  });
+
+  test('registers deprecated button-secondary with same values as secondary-bg', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-secondary')?.value).toBe(tailwindColorPalette.stone[700]);
+    expect(lightColors.find(c => c.id === 'button-secondary')?.value).toBe(tailwindColorPalette.accent1[100]);
+  });
+
+  test('registers secondary-hover-bg with slate/accent1 values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-secondary-hover-bg')?.value).toBe(tailwindColorPalette.slate[600]);
+    expect(lightColors.find(c => c.id === 'button-secondary-hover-bg')?.value).toBe(tailwindColorPalette.accent1[50]);
+  });
+
+  test('registers secondary-border with alpha transparency', () => {
+    const spyOnRegisterColorDefinition = vi.spyOn(colorRegistry, 'registerColorDefinition');
+
+    colorRegistry.initButton();
+
+    const secondaryBorderCall = spyOnRegisterColorDefinition.mock.calls.find(
+      call => call?.[0]?.id === 'button-secondary-border',
+    );
+    expect(secondaryBorderCall).toBeDefined();
+
+    const definition = secondaryBorderCall?.[0];
+    expect(definition?.dark).toContain('0.4');
+  });
+
+  test('registers secondary-text with correct values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-secondary-text')?.value).toBe(tailwindColorPalette.gray[200]);
+    expect(lightColors.find(c => c.id === 'button-secondary-text')?.value).toBe(tailwindColorPalette.accent1[500]);
+  });
+
+  test('registers disabled-bg with stone values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-disabled-bg')?.value).toBe(tailwindColorPalette.stone[700]);
+    expect(lightColors.find(c => c.id === 'button-disabled-bg')?.value).toBe(tailwindColorPalette.stone[300]);
+  });
+
+  test('registers disabled-text referencing item-disabled color', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const disabledTextLight = lightColors.find(c => c.id === 'button-disabled-text');
+    const disabledTextDark = darkColors.find(c => c.id === 'button-disabled-text');
+    const itemDisabledLight = lightColors.find(c => c.id === 'item-disabled');
+    const itemDisabledDark = darkColors.find(c => c.id === 'item-disabled');
+
+    expect(disabledTextLight?.value).toBe(itemDisabledLight?.value);
+    expect(disabledTextDark?.value).toBe(itemDisabledDark?.value);
+  });
+
+  test('registers danger-bg with red values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-danger-bg')?.value).toBe(tailwindColorPalette.red[700]);
+    expect(lightColors.find(c => c.id === 'button-danger-bg')?.value).toBe(tailwindColorPalette.red[200]);
+  });
+
+  test('registers danger-border with red values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-danger-border')?.value).toBe(tailwindColorPalette.red[550]);
+    expect(lightColors.find(c => c.id === 'button-danger-border')?.value).toBe(tailwindColorPalette.red[800]);
+  });
+
+  test('registers danger-text with white/red values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-danger-text')?.value).toBe(tailwindColorPalette.white);
+    expect(lightColors.find(c => c.id === 'button-danger-text')?.value).toBe(tailwindColorPalette.red[800]);
+  });
+
+  test('registers danger-hover-bg with red values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-danger-hover-bg')?.value).toBe(tailwindColorPalette.red[600]);
+    expect(lightColors.find(c => c.id === 'button-danger-hover-bg')?.value).toBe(tailwindColorPalette.red[100]);
+  });
+
+  test('registers link-bg as transparent', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(lightColors.find(c => c.id === 'button-link-bg')?.value).toBe('transparent');
+    expect(darkColors.find(c => c.id === 'button-link-bg')?.value).toBe('transparent');
+  });
+
+  test('registers link-text referencing default-text-link color', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const linkTextLight = lightColors.find(c => c.id === 'button-link-text');
+    const linkTextDark = darkColors.find(c => c.id === 'button-link-text');
+    const textLinkLight = lightColors.find(c => c.id === 'default-text-link');
+    const textLinkDark = darkColors.find(c => c.id === 'default-text-link');
+
+    expect(linkTextLight?.value).toBe(textLinkLight?.value);
+    expect(linkTextDark?.value).toBe(textLinkDark?.value);
+  });
+
+  test('registers link-hover-bg referencing default-item-hover color', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const linkHoverBgLight = lightColors.find(c => c.id === 'button-link-hover-bg');
+    const linkHoverBgDark = darkColors.find(c => c.id === 'button-link-hover-bg');
+    const hoverItemLight = lightColors.find(c => c.id === 'default-item-hover');
+    const hoverItemDark = darkColors.find(c => c.id === 'default-item-hover');
+
+    expect(linkHoverBgLight?.value).toBe(hoverItemLight?.value);
+    expect(linkHoverBgDark?.value).toBe(hoverItemDark?.value);
+  });
+
+  test('registers focus-ring referencing default-text-link color', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const focusRingLight = lightColors.find(c => c.id === 'button-focus-ring');
+    const focusRingDark = darkColors.find(c => c.id === 'button-focus-ring');
+    const textLinkLight = lightColors.find(c => c.id === 'default-text-link');
+    const textLinkDark = darkColors.find(c => c.id === 'default-text-link');
+
+    expect(focusRingLight?.value).toBe(textLinkLight?.value);
+    expect(focusRingDark?.value).toBe(textLinkDark?.value);
+  });
+
+  test('registers focus-ring-danger with red values', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    expect(darkColors.find(c => c.id === 'button-focus-ring-danger')?.value).toBe(tailwindColorPalette.red[550]);
+    expect(lightColors.find(c => c.id === 'button-focus-ring-danger')?.value).toBe(tailwindColorPalette.red[750]);
+  });
+
+  test('registers tab-border-selected referencing default-text-link color', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const tabBorderSelectedLight = lightColors.find(c => c.id === 'button-tab-border-selected');
+    const tabBorderSelectedDark = darkColors.find(c => c.id === 'button-tab-border-selected');
+    const textLinkLight = lightColors.find(c => c.id === 'default-text-link');
+    const textLinkDark = darkColors.find(c => c.id === 'default-text-link');
+
+    expect(tabBorderSelectedLight?.value).toBe(textLinkLight?.value);
+    expect(tabBorderSelectedDark?.value).toBe(textLinkDark?.value);
+  });
+
+  test('registers tab-text and tab-text-selected referencing default-text-link', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const textLinkLight = lightColors.find(c => c.id === 'default-text-link');
+    const textLinkDark = darkColors.find(c => c.id === 'default-text-link');
+
+    expect(lightColors.find(c => c.id === 'button-tab-text')?.value).toBe(textLinkLight?.value);
+    expect(darkColors.find(c => c.id === 'button-tab-text')?.value).toBe(textLinkDark?.value);
+
+    expect(lightColors.find(c => c.id === 'button-tab-text-selected')?.value).toBe(textLinkLight?.value);
+    expect(darkColors.find(c => c.id === 'button-tab-text-selected')?.value).toBe(textLinkDark?.value);
+  });
+
+  test('registers tab-hover-border referencing default-item-hover', () => {
+    colorRegistry.initButton();
+
+    const lightColors = colorRegistry.listColors('light');
+    const darkColors = colorRegistry.listColors('dark');
+
+    const tabHoverBorderLight = lightColors.find(c => c.id === 'button-tab-hover-border');
+    const tabHoverBorderDark = darkColors.find(c => c.id === 'button-tab-hover-border');
+    const hoverItemLight = lightColors.find(c => c.id === 'default-item-hover');
+    const hoverItemDark = darkColors.find(c => c.id === 'default-item-hover');
+
+    expect(tabHoverBorderLight?.value).toBe(hoverItemLight?.value);
+    expect(tabHoverBorderDark?.value).toBe(hoverItemDark?.value);
+  });
+});
+
+describe('initStatusColors', () => {
+  beforeEach(() => {
+    vi.spyOn(colorRegistry, 'registerColor').mockReturnValue(undefined);
+    vi.spyOn(colorRegistry, 'registerColorDefinition').mockReturnValue(undefined);
+
+    colorRegistry.initStatusColors();
+  });
+
+  test.each([
+    { id: 'status-running-bg', description: 'green alpha background' },
+    { id: 'status-stopped-bg', description: 'gray/charcoal alpha background' },
+    { id: 'status-terminated-bg', description: 'red alpha background' },
+    { id: 'status-starting-bg', description: 'green alpha background' },
+    { id: 'status-unknown-bg', description: 'gray/charcoal alpha background' },
+  ])('registers $id with $description', ({ id }) => {
+    const call = vi.mocked(colorRegistry.registerColorDefinition).mock.calls.find(c => c?.[0]?.id === id);
+    expect(call).toBeDefined();
+    const definition = call?.[0];
+    expect(definition?.id).toBe(id);
+    expect(definition?.light).toBeDefined();
+    expect(definition?.dark).toBeDefined();
+    expect(definition?.light).toContain('0.2');
+    expect(definition?.dark).toContain('0.2');
+  });
+
+  test('registers exactly 5 color definitions for status backgrounds', () => {
+    expect(vi.mocked(colorRegistry.registerColorDefinition)).toHaveBeenCalledTimes(5);
+  });
+});
+
 describe('registerColorDefinition', () => {
   test('registers color using definition with id', () => {
     const spyOnNotifyUpdate = vi.spyOn(colorRegistry, 'notifyUpdate');
@@ -860,6 +1320,42 @@ describe('registerColorDefinition', () => {
     });
 
     expect(spyOnRegisterColor).toHaveBeenCalledWith('internal-test', {
+      light: '#fff',
+      dark: '#000',
+    });
+  });
+
+  test('passes hcDark and hcLight to registerColor when provided', () => {
+    const spyOnRegisterColor = vi.spyOn(colorRegistry, 'registerColor');
+    spyOnRegisterColor.mockReturnValue(undefined);
+
+    colorRegistry.registerColorDefinition({
+      id: 'hc-def-test',
+      light: '#fff',
+      dark: '#000',
+      hcDark: '#hcDarkValue',
+      hcLight: '#hcLightValue',
+    });
+
+    expect(spyOnRegisterColor).toHaveBeenCalledWith('hc-def-test', {
+      light: '#fff',
+      dark: '#000',
+      hcDark: '#hcDarkValue',
+      hcLight: '#hcLightValue',
+    });
+  });
+
+  test('does not pass hcDark and hcLight to registerColor when not provided', () => {
+    const spyOnRegisterColor = vi.spyOn(colorRegistry, 'registerColor');
+    spyOnRegisterColor.mockReturnValue(undefined);
+
+    colorRegistry.registerColorDefinition({
+      id: 'no-hc-def-test',
+      light: '#fff',
+      dark: '#000',
+    });
+
+    expect(spyOnRegisterColor).toHaveBeenCalledWith('no-hc-def-test', {
       light: '#fff',
       dark: '#000',
     });
@@ -991,5 +1487,52 @@ describe('color() fluent API', () => {
       .withDark(colorPaletteHelper('#000000'));
 
     expect(() => builder.build()).toThrow('Failed to parse color not-a-color');
+  });
+});
+
+describe('initProviderInfo', () => {
+  let spyOnRegisterColor: MockInstance<(colorId: string, definition: ColorDefinition) => void>;
+
+  beforeEach(() => {
+    spyOnRegisterColor = vi.spyOn(colorRegistry, 'registerColor');
+    spyOnRegisterColor.mockReturnValue(undefined);
+
+    colorRegistry.initProviderInfo();
+  });
+
+  test('registers provider-podman with purple', () => {
+    expect(spyOnRegisterColor).toBeCalledWith('provider-podman', {
+      dark: tailwindColorPalette.purple[600],
+      light: tailwindColorPalette.purple[600],
+      hcDark: tailwindColorPalette.purple[400],
+      hcLight: tailwindColorPalette.purple[700],
+    });
+  });
+
+  test('registers provider-docker with sky blue', () => {
+    expect(spyOnRegisterColor).toBeCalledWith('provider-docker', {
+      dark: tailwindColorPalette.sky[400],
+      light: tailwindColorPalette.sky[400],
+      hcDark: tailwindColorPalette.sky[300],
+      hcLight: tailwindColorPalette.sky[600],
+    });
+  });
+
+  test('registers provider-kubernetes with sky blue', () => {
+    expect(spyOnRegisterColor).toBeCalledWith('provider-kubernetes', {
+      dark: tailwindColorPalette.sky[600],
+      light: tailwindColorPalette.sky[600],
+      hcDark: tailwindColorPalette.sky[400],
+      hcLight: tailwindColorPalette.sky[700],
+    });
+  });
+
+  test('registers provider-unknown with gray', () => {
+    expect(spyOnRegisterColor).toBeCalledWith('provider-unknown', {
+      dark: tailwindColorPalette.gray[900],
+      light: tailwindColorPalette.gray[900],
+      hcDark: tailwindColorPalette.white,
+      hcLight: tailwindColorPalette.black,
+    });
   });
 });

@@ -25,7 +25,7 @@ import type Dockerode from 'dockerode';
 import type { IpcMainEvent } from 'electron';
 import type { Method } from 'got';
 import { http, HttpResponse } from 'msw';
-import { setupServer, type SetupServerApi } from 'msw/node';
+import { type SetupServer, setupServer } from 'msw/node';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ContainerProviderRegistry } from '/@/plugin/container-registry.js';
@@ -33,6 +33,8 @@ import type { ContributionManager } from '/@/plugin/contribution-manager.js';
 import type { Directories } from '/@/plugin/directories.js';
 
 import { DockerDesktopInstallation } from './docker-desktop-installation.js';
+
+vi.mock(import('node:fs'));
 
 let dockerDesktopInstallation: TestDockerDesktopInstallation;
 
@@ -66,7 +68,7 @@ const apiSender: ApiSenderType = {
   receive: vi.fn(),
 };
 
-let server: SetupServerApi | undefined = undefined;
+let server: SetupServer | undefined = undefined;
 
 class TestDockerDesktopInstallation extends DockerDesktopInstallation {
   // transform the method name to a got method
@@ -282,8 +284,6 @@ describe('handleExtensionVMServiceRequest', () => {
 });
 
 test('Check handlePluginInstall', async () => {
-  vi.mock('node:fs');
-
   const allReplies: string[] = [];
 
   const ipcMainEventReplyMock = vi.fn().mockImplementation((channel: string, ...args: unknown[]) => {

@@ -18,6 +18,7 @@
 
 import type { Configuration } from '@podman-desktop/api';
 import type { IConfigurationPropertyRecordedSchema } from '@podman-desktop/core-api/configuration';
+import type Electron from 'electron';
 import { shell } from 'electron';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -27,11 +28,15 @@ import { ExperimentalFeatureFeedbackHandler } from './experimental-feature-feedb
 import type { MessageBox } from './message-box.js';
 import type { Telemetry } from './telemetry/telemetry.js';
 
-vi.mock('electron', () => ({
-  shell: {
-    openExternal: vi.fn().mockResolvedValue(undefined),
-  },
-}));
+vi.mock(
+  import('electron'),
+  () =>
+    ({
+      shell: {
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    }) as unknown as typeof Electron,
+);
 
 const features: Record<string, IConfigurationPropertyRecordedSchema> = {
   'feat.feature1': {
@@ -130,7 +135,7 @@ describe('init', () => {
     expect(registerConfigurationsMock).toHaveBeenCalledTimes(1);
     expect(registerConfigurationsMock).toHaveBeenCalledWith([
       {
-        id: 'preferences',
+        id: 'preferences.feedback',
         title: 'Feedback dialog',
         type: 'object',
         properties: {
@@ -180,7 +185,7 @@ describe('init', () => {
     expect(showFeedbackDialogSpy).toBeCalled();
   });
 
-  test(`should remove old configs with 'false' value`, async () => {
+  test(`should skip disabled features with 'false' value`, async () => {
     const conf = false;
     configurationGetMock.mockReturnValue(conf);
     vi.mocked(configurationRegistry.getConfiguration).mockReturnValue(configuration);
@@ -193,7 +198,7 @@ describe('init', () => {
 
     expect(setReminderSpy).not.toHaveBeenCalled();
     expect(setSpy).not.toHaveBeenCalled();
-    expect(saveSpy).toHaveBeenCalledWith('feat.feature1');
+    expect(saveSpy).not.toHaveBeenCalled();
     expect(feedbackForm.experimentalFeatures.get('feat.feature1')).toBe(undefined);
   });
 });
@@ -214,14 +219,13 @@ describe('save', () => {
     expect(updateMock).toHaveBeenCalledWith('feature1', conf);
   });
 
-  test('should call update with empty object and then undefined for missing experimental config', async () => {
+  test('should call update with undefined for missing experimental config', async () => {
     vi.spyOn(feedbackForm.experimentalFeatures, 'get').mockReturnValue(undefined);
 
     await feedbackForm.save('feat.feature1');
 
-    expect(updateMock).toHaveBeenCalledTimes(2);
-    expect(updateMock).toHaveBeenNthCalledWith(1, 'feature1', {});
-    expect(updateMock).toHaveBeenNthCalledWith(2, 'feature1', undefined);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith('feature1', undefined);
   });
 });
 

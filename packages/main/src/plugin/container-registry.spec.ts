@@ -32,11 +32,12 @@ import type {
   ProviderContainerConnectionInfo,
 } from '@podman-desktop/core-api';
 import type { ApiSenderType } from '@podman-desktop/core-api/api-sender';
+import type { IConfigurationNode } from '@podman-desktop/core-api/configuration';
 import type { ContainerCreateOptions as PodmanContainerCreateOptions } from '@podman-desktop/core-api/libpod';
 import Dockerode from 'dockerode';
 import moment from 'moment';
 import { http, HttpResponse } from 'msw';
-import { setupServer, type SetupServerApi } from 'msw/node';
+import { type SetupServer, setupServer } from 'msw/node';
 import type { Headers, PackOptions } from 'tar-fs';
 import * as tarstream from 'tar-stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -322,7 +323,7 @@ const fakeContainerInspectInfoWithVolume = {
   },
 };
 
-let server: SetupServerApi | undefined = undefined;
+let server: SetupServer | undefined = undefined;
 
 class TestContainerProviderRegistry extends ContainerProviderRegistry {
   public override extractContainerEnvironment(container: ContainerInspectInfo): { [key: string]: string } {
@@ -420,25 +421,16 @@ const configurationRegistry = {
   getConfiguration: getConfigurationMock,
 } as unknown as ConfigurationRegistry;
 
-vi.mock('node:fs', async () => {
-  return {
-    promises: {
-      readdir: vi.fn(),
-    },
-    createWriteStream: vi.fn(),
-    existsSync: vi.fn(),
-  };
-});
-
-vi.mock('node:stream/promises', async () => {
+vi.mock(import('node:fs'));
+vi.mock(import('node:stream/promises'), async () => {
   return {
     pipeline: vi.fn(),
     readFile: vi.fn(),
   };
 });
 
-vi.mock('node:fs/promises');
-vi.mock('/@/plugin/podman/kube.js');
+vi.mock(import('node:fs/promises'));
+vi.mock(import('/@/plugin/podman/kube.js'));
 
 beforeEach(() => {
   vi.mocked(apiSender.receive).mockClear();
@@ -1382,6 +1374,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
     await expect(
       containerRegistry.buildImage('context', () => {}, {
@@ -1466,6 +1462,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
 
     vi.spyOn(util, 'isWindows').mockImplementation(() => false);
@@ -1552,6 +1552,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
 
     vi.spyOn(util, 'isWindows').mockImplementation(() => true);
@@ -1655,6 +1659,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
 
     vi.spyOn(util, 'isWindows').mockImplementation(() => false);
@@ -1760,6 +1768,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
 
     vi.spyOn(util, 'isWindows').mockImplementation(() => false);
@@ -1841,6 +1853,10 @@ describe('buildImage', () => {
       },
       lifecycleMethods: undefined,
       status: 'started',
+      canStart: false,
+      canStop: false,
+      canEdit: false,
+      canDelete: false,
     };
 
     vi.spyOn(util, 'isWindows').mockImplementation(() => false);
@@ -3696,6 +3712,55 @@ test('check handleEvents is not calling the console.log for health_status event'
   expect(consoleLogSpy).not.toBeCalled();
 });
 
+test('check handleEvents tracks telemetry when stream emits error', async () => {
+  telemetryTrackMock.mockClear();
+  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const getEventsMock = vi.fn();
+  let eventsMockCallback: ((ignored: unknown, stream: PassThrough) => void) | undefined;
+  // keep the function passed in parameter of getEventsMock
+  getEventsMock.mockImplementation((options: (ignored: unknown, stream: PassThrough) => void) => {
+    eventsMockCallback = options;
+  });
+
+  const passThrough = new PassThrough();
+  const fakeDockerode = {
+    getEvents: getEventsMock,
+  } as unknown as Dockerode;
+
+  const errorCallback = vi.fn();
+
+  containerRegistry.handleEvents(fakeDockerode, errorCallback);
+
+  if (eventsMockCallback) {
+    eventsMockCallback?.(undefined, passThrough);
+  }
+
+  // emit an error on the stream
+  const testError = new Error('stream connection error');
+  passThrough.emit('error', testError);
+
+  // wait for error handling
+  await vi.waitFor(() => expect(errorCallback).toHaveBeenCalled());
+
+  // check that telemetry was tracked with correct event name and properties
+  expect(telemetry.track).toHaveBeenCalledWith(
+    'container-events-failure',
+    expect.objectContaining({
+      nbEvents: expect.any(Number),
+      failureAfter: expect.any(Number),
+      error: testError,
+    }),
+  );
+
+  // verify error was logged
+  expect(consoleErrorSpy).toHaveBeenCalledWith('/event stream received an error.', testError);
+
+  // verify error callback was called with wrapped error
+  expect(errorCallback).toHaveBeenCalledWith(expect.objectContaining({ message: 'Error in handling events' }));
+
+  consoleErrorSpy.mockRestore();
+});
+
 test('check volume mounted is replicated when executing replicatePodmanContainer with named volume', async () => {
   const dockerAPI = new Dockerode({ protocol: 'http', host: 'localhost' });
 
@@ -3987,6 +4052,10 @@ test('check createPod uses running podman connection if ProviderContainerConnect
     },
     status: 'started',
     type: 'podman',
+    canStart: false,
+    canStop: false,
+    canEdit: false,
+    canDelete: false,
   };
 
   const result = await containerRegistry.createPod({
@@ -4746,6 +4815,31 @@ test('expect to fall back to compat api images if podman provider does not have 
   expect(images[0]?.Id).toBe('dummyImageId2');
 });
 
+test('pass options to compat api when using podmanListImages', async () => {
+  const imagesList = [{ Id: 'dummyImageId' }];
+  server = setupServer(http.get('http://localhost/images/json', () => HttpResponse.json(imagesList)));
+  server.listen({ onUnhandledRequest: 'error' });
+
+  const api = new Dockerode({ protocol: 'http', host: 'localhost' });
+  const listImagesSpy = vi.spyOn(api, 'listImages');
+
+  containerRegistry.addInternalProvider('podman', {
+    name: 'podman',
+    id: 'podman1',
+    api,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+
+  await containerRegistry.podmanListImages({ all: true, filters: '{"dangling":["false"]}' });
+
+  expect(vi.mocked(listImagesSpy)).toHaveBeenCalledWith({
+    all: true,
+    filters: '{"dangling":["false"]}',
+  });
+});
+
 test('expect a blank array if there is no api or libpod API when doing podmanListImages', async () => {
   containerRegistry.addInternalProvider('podman', {
     name: 'podman',
@@ -4776,6 +4870,68 @@ test('expect to get get zero images if podman provider has neither libpod API no
   // ensure the field are correct
   expect(images).toBeDefined();
   expect(images).toHaveLength(0);
+});
+
+test('expect podmanListImages to return images from working providers even if one fails', async () => {
+  const consoleErrorSpy = vi.spyOn(console, 'error');
+
+  const workingProviderImages = [
+    {
+      Id: 'workingImageId',
+      Digest: 'fooDigest',
+    },
+  ];
+
+  // Setup working provider
+  server = setupServer(
+    http.get('http://localhost/v4.2.0/libpod/images/json', () => HttpResponse.json(workingProviderImages)),
+  );
+  server.listen({ onUnhandledRequest: 'error' });
+
+  const workingApi = new Dockerode({ protocol: 'http', host: 'localhost' });
+
+  // Add working provider
+  containerRegistry.addInternalProvider('podman-working', {
+    name: 'podman-working',
+    id: 'podman-working',
+    api: workingApi,
+    libpodApi: workingApi,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+
+  // Add failing provider
+  const failingError = new Error('Connection failed');
+  const failingApi = {
+    podmanListImages: vi.fn().mockRejectedValue(failingError),
+    listImages: vi.fn().mockRejectedValue(failingError),
+  };
+
+  containerRegistry.addInternalProvider('podman-failing', {
+    name: 'podman-failing',
+    id: 'podman-failing',
+    api: failingApi,
+    libpodApi: failingApi,
+    connection: {
+      type: 'podman',
+    },
+  } as unknown as InternalContainerProvider);
+
+  const images = await containerRegistry.podmanListImages();
+
+  // Should return images from working provider despite the error
+  expect(images).toBeDefined();
+  expect(images).toHaveLength(1);
+  expect(images[0]?.Id).toBe('sha256:workingImageId');
+  expect(images[0]?.engineId).toBe('podman-working');
+  expect(images[0]?.engineName).toBe('podman-working');
+
+  // Should log error for failed provider with provider context
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    'Error listing images from provider podman-failing (podman-failing):',
+    failingError,
+  );
 });
 
 test('listInfos without provider', async () => {
@@ -6237,5 +6393,47 @@ describe('getNetworkDrivers', () => {
     await expect(containerRegistry.getNetworkDrivers(nonexistentConnectionInfo)).rejects.toThrow(
       'no running provider for the matching container',
     );
+  });
+});
+
+describe('ContainerRegistrySettings', () => {
+  test('init should register provider timeout configuration', () => {
+    const registerConfigurationsMock = vi.fn();
+    const configRegistry = {
+      registerConfigurations: registerConfigurationsMock,
+    } as unknown as ConfigurationRegistry;
+
+    const proxy: Proxy = {
+      onDidStateChange: vi.fn(),
+      onDidUpdateProxy: vi.fn(),
+      isEnabled: vi.fn(),
+    } as unknown as Proxy;
+
+    const imageRegistry = new ImageRegistry(
+      {} as ApiSenderType,
+      { track: vi.fn() } as unknown as Telemetry,
+      {} as Certificates,
+      proxy,
+    );
+
+    const apiSender: ApiSenderType = {
+      send: vi.fn(),
+      receive: vi.fn(),
+    };
+
+    const containerProviderRegistry = new TestContainerProviderRegistry(apiSender, configRegistry, imageRegistry, {
+      track: vi.fn(),
+    } as unknown as Telemetry);
+
+    containerProviderRegistry.init();
+
+    expect(registerConfigurationsMock).toHaveBeenCalledOnce();
+    const registeredConfig = registerConfigurationsMock.mock.calls[0]?.[0]?.[0] as IConfigurationNode | undefined;
+    expect(registeredConfig?.id).toBe('preferences.container-registry');
+    expect(registeredConfig?.properties?.['container-registry.providerTimeout']).toBeDefined();
+    expect(registeredConfig?.properties?.['container-registry.providerTimeout']?.type).toBe('number');
+    expect(registeredConfig?.properties?.['container-registry.providerTimeout']?.default).toBe(30);
+    expect(registeredConfig?.properties?.['container-registry.providerTimeout']?.minimum).toBe(5);
+    expect(registeredConfig?.properties?.['container-registry.providerTimeout']?.maximum).toBe(120);
   });
 });
