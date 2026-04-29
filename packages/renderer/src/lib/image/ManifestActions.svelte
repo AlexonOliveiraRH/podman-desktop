@@ -35,7 +35,7 @@ async function deleteManifest(): Promise<void> {
 
 async function onError(error: string): Promise<void> {
   await window.showMessageBox({
-    title: 'Something went wrong.',
+    title: 'Delete Manifest Failed',
     message: error,
     type: 'error',
   });
@@ -44,7 +44,7 @@ async function onError(error: string): Promise<void> {
 
 <ListItemButtonIcon
   title="Delete Manifest"
-  onClick={(): void => withConfirmation(deleteManifest, `delete manifest ${manifest.name}`, { variant:'delete' } )}
+  onClick={(): void => withConfirmation(deleteManifest, `delete manifest ${manifest.name}`, { title: 'Delete Manifest?', variant: 'delete' })}
   detailed={detailed}
   icon={faTrash}
   enabled={manifest.status === 'UNUSED'} />

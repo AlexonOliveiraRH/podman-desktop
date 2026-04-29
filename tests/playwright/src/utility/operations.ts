@@ -60,7 +60,7 @@ export async function deleteContainer(page: Page, name: string): Promise<void> {
       // delete the container
       const deleteButton = container.getByRole('button').and(container.getByLabel('Delete Container'));
       await deleteButton.click();
-      await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
+      await handleConfirmationDialog(page, 'Delete Container?', true, 'Delete');
       // wait for container to disappear
       try {
         console.log('Waiting for container to get deleted ...');
@@ -93,7 +93,7 @@ export async function deleteImage(page: Page, name: string): Promise<void> {
       const deleteButton = row.getByRole('button', { name: 'Delete Image' });
       if (await deleteButton.isEnabled()) {
         await deleteButton.click();
-        await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
+        await handleConfirmationDialog(page, 'Delete Image?', true, 'Delete');
       } else {
         throw Error(`Cannot delete image ${name}, because it is in use`);
       }
@@ -149,7 +149,7 @@ export async function deletePod(page: Page, name: string, timeout = 50_000): Pro
       const deleteButton = pod.getByRole('button').and(pod.getByLabel('Delete Pod'));
       await deleteButton.click();
       // config delete dialog
-      await handleConfirmationDialog(page, 'Confirmation', true, 'Delete');
+      await handleConfirmationDialog(page, 'Delete Pod?', true, 'Delete');
       // wait for pod to disappear
       try {
         console.log('Waiting for pod to get deleted ...');
@@ -212,8 +212,9 @@ export async function handleConfirmationDialog(
   // Note: Intentionally not wrapped in test.step to allow proper try-catch handling
   // by callers. test.step has special failure semantics that can interfere with
   // exception handling when this function is used in "try and see" patterns.
+  let errMessage = `Timeout (${timeout} ms) reached waiting for ${dialogTitle} dialog to show up`;
   const dialog = page.getByRole('dialog', { name: dialogTitle, exact: true });
-  await waitUntil(async () => await dialog.isVisible(), { timeout: timeout });
+  await waitUntil(async () => await dialog.isVisible(), { timeout: timeout, message: errMessage });
   const button = confirm
     ? dialog.getByRole('button', { name: confirmationButton })
     : dialog.getByRole('button', { name: cancelButton });
@@ -226,7 +227,8 @@ export async function handleConfirmationDialog(
     await doneButton.click();
   }
 
-  await waitUntil(async () => !(await dialog.isVisible()), { timeout: timeout });
+  errMessage = `Timeout (${timeout} ms) reached waiting for ${dialogTitle} dialog to disolve when clicking: ${confirm ? confirmationButton : cancelButton}`;
+  await waitUntil(async () => !(await dialog.isVisible()), { timeout: timeout, message: errMessage });
 }
 
 /**
