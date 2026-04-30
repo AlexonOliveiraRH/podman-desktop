@@ -43,12 +43,12 @@ const network: NetworkInfoUI = {
 
 const closeDialog = vi.fn();
 
-test('Expect podman used network to have edit option but not delete', async () => {
+test('Expect podman used network to have update option but not delete', async () => {
   render(UpdateNetworkDialog, { network: network, onClose: closeDialog });
 
   await tick();
 
-  expect(screen.getByText('Edit Network Network 1')).toBeInTheDocument();
+  expect(screen.getByText('Update Network Network 1')).toBeInTheDocument();
 
   const addField = screen.getAllByPlaceholderText('8.8.8.8 1.1.1.1')?.[0];
   const removeField = screen.getAllByPlaceholderText('8.8.8.8 1.1.1.1')?.[1];
