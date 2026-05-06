@@ -64,7 +64,9 @@ test.describe
     });
 
     test('Buttons disabled when navigation not possible', async ({ navigationBar, page }) => {
-      // Navigate to Dashboard (fresh start for this test)
+      // Clear sessionStorage so route-restoration lands on Dashboard (default),
+      // not on whatever page a prior test happened to leave in storage.
+      await page.evaluate(() => sessionStorage.clear());
       await page.reload();
       await playExpect(navigationBar.backButton).toBeDisabled();
       await playExpect(navigationBar.forwardButton).toBeDisabled();

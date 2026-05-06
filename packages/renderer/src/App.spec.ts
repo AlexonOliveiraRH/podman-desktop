@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (C) 2024-2025 Red Hat, Inc.
+ * Copyright (C) 2024-2026 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ vi.mock(import('./lib/image/ImagesList.svelte'), () => ({
 
 vi.mock(import('./lib/ui/TitleBar.svelte'));
 vi.mock(import('./lib/welcome/WelcomePage.svelte'));
+vi.mock(import('./PreferencesNavigation.svelte'));
 
 vi.mock(import('./lib/context/ContextKey.svelte'));
 
@@ -78,6 +79,7 @@ const messages = new Map<string, (args: unknown) => void>();
 
 beforeEach(() => {
   vi.resetAllMocks();
+  sessionStorage.clear();
   router.goto('/');
   (window.events as unknown) = {
     receive: vi.fn().mockImplementation((channel, func) => {
@@ -224,6 +226,59 @@ test('leaving Dashboard Page saves it in lastPage storage', async () => {
   router.goto('/pods');
   await tick();
   expect(get(lastPage).name).equals('Dashboard Page');
+});
+
+describe('route persistence across reloads', () => {
+  const LAST_ROUTE_KEY = 'last-route';
+  const SETTINGS_PAGE_KEY = 'settings-page';
+
+  test('navigating to a regular page saves it in sessionStorage', async () => {
+    render(App);
+    router.goto('/images');
+    await tick();
+    expect(sessionStorage.getItem(LAST_ROUTE_KEY)).toBe('/images');
+    expect(sessionStorage.getItem(SETTINGS_PAGE_KEY)).toBeNull();
+  });
+
+  test('navigating to Dashboard clears sessionStorage', async () => {
+    render(App);
+    router.goto('/images');
+    await tick();
+    router.goto('/');
+    await tick();
+    expect(sessionStorage.getItem(LAST_ROUTE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SETTINGS_PAGE_KEY)).toBeNull();
+  });
+
+  test('navigating to a preferences page saves it without overwriting last regular page', async () => {
+    render(App);
+    router.goto('/images');
+    await tick();
+    router.goto('/preferences/resources');
+    await tick();
+    expect(sessionStorage.getItem(LAST_ROUTE_KEY)).toBe('/images');
+    expect(sessionStorage.getItem(SETTINGS_PAGE_KEY)).toBe('/preferences/resources');
+  });
+
+  test('navigating directly to a preferences page (no prior regular page) saves only SETTINGS_PAGE_KEY', async () => {
+    render(App);
+    router.goto('/preferences/onboarding/podman');
+    await tick();
+    expect(sessionStorage.getItem(SETTINGS_PAGE_KEY)).toBe('/preferences/onboarding/podman');
+    expect(sessionStorage.getItem(LAST_ROUTE_KEY)).toBeNull();
+  });
+
+  test('navigating away from preferences clears SETTINGS_PAGE_KEY', async () => {
+    render(App);
+    router.goto('/images');
+    await tick();
+    router.goto('/preferences/resources');
+    await tick();
+    router.goto('/containers');
+    await tick();
+    expect(sessionStorage.getItem(LAST_ROUTE_KEY)).toBe('/containers');
+    expect(sessionStorage.getItem(SETTINGS_PAGE_KEY)).toBeNull();
+  });
 });
 
 describe('Table persistence functionality', () => {

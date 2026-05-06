@@ -114,12 +114,11 @@
     "@kubernetes/client-node": "^1.4.0",
     "@podman-desktop/api": "workspace:*",
     "mustache": "^4.2.0",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.4"
   },
   "devDependencies": {
     "adm-zip": "^0.5.17",
     "mkdirp": "^3.0.1",
-    "tmp-promise": "^3.0.3",
     "tsx": "^4.21.0",
     "vite": "^7.3.2",
     "vitest": "^4.1.5"
